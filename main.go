@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -71,7 +72,19 @@ func main() {
 	lb := &LoadBalancer{backends: backends}
 
 	go lb.healthCheck()
-	http.HandleFunc("/", lb.proxy)
-	fmt.Println("Load Balancer started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	// Load the SSL certificate and key
+	certFile := "cert.pem"
+	keyFile := "key.pem"
+
+	server := &http.Server{
+		Addr:    ":8443",
+		Handler: http.HandlerFunc(lb.proxy),
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS13,
+		},
+	}
+
+	fmt.Println("Load Balancer started at :8443")
+	log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
 }
