@@ -32,16 +32,21 @@ func NewPathRouterWithLB(routes map[string]*LoadBalancer) http.Handler {
 }
 
 func (lb *LoadBalancer) forward(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
 	backend := lb.getNextBackend()
 
 	if !backend.Alive {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		log.Printf("Path: %s | Req method: %s | Backend: %s | Status: %d | Latency: %v\n",
+			r.URL.Path, r.Method, backend.URL, http.StatusServiceUnavailable, time.Since(startTime))
 		return
 	}
 
 	resp, err := http.Get(backend.URL + r.URL.Path)
 	if err != nil {
 		http.Error(w, "Backend unavailable", http.StatusServiceUnavailable)
+		log.Printf("Path: %s | Req method: %s | Backend: %s | Status: %d | Latency: %v\n",
+			r.URL.Path, r.Method, backend.URL, http.StatusServiceUnavailable, time.Since(startTime))
 		return
 	}
 	defer resp.Body.Close()
@@ -53,10 +58,13 @@ func (lb *LoadBalancer) forward(w http.ResponseWriter, r *http.Request) {
 
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
-		log.Printf("Error copying response from backend: %v", err)
 		http.Error(w, "Error forwarding response", http.StatusInternalServerError)
+		log.Printf("Path: %s | Req method: %s | Backend: %s | Status: %d | Latency: %v\n",
+			r.URL.Path, r.Method, backend.URL, http.StatusInternalServerError, time.Since(startTime))
 		return
 	}
+	log.Printf("Path: %s | Req method: %s | Backend: %s | Status: %d | Latency: %v\n",
+		r.URL.Path, r.Method, backend.URL, resp.StatusCode, time.Since(startTime))
 }
 
 func (lb *LoadBalancer) getNextBackend() *Backend {
