@@ -42,7 +42,9 @@ func (lb *LoadBalancer) forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Get(backend.URL + r.URL.Path)
+	targetURL := backend.URL + r.URL.Path + "?" + r.URL.RawQuery
+
+	resp, err := http.Get(targetURL)
 	if err != nil {
 		http.Error(w, "Backend unavailable", http.StatusServiceUnavailable)
 		log.Printf("Path: %s | Req method: %s | Backend: %s | Status: %d | Latency: %v\n",
