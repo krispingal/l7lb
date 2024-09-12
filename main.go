@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 		"/apiB": apiBlb,
 	}
 	router := NewPathRouterWithLB(routes)
+	limiter := NewRateLimiter(100, time.Minute)
 
 	// Load the SSL certificate and key
 	certFile := "cert.pem"
@@ -34,7 +36,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    ":8443",
-		Handler: router,
+		Handler: limiter.Middleware(router),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS13,
 		},
