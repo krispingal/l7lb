@@ -23,10 +23,12 @@ func main() {
 
 	apiAlb := usecases.NewLoadBalancer(backendGroupA)
 	apiBlb := usecases.NewLoadBalancer(backendGroupB)
+	hcA := usecases.NewHealthChecker(backendGroupA, http.DefaultClient)
+	hcB := usecases.NewHealthChecker(backendGroupB, http.DefaultClient)
 
 	// Start health checks for backend servers
-	go apiAlb.StartHealthCheck()
-	go apiBlb.StartHealthCheck()
+	go hcA.Start()
+	go hcB.Start()
 
 	routes := map[string]*usecases.LoadBalancer{
 		"/apiA": apiAlb,

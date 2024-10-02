@@ -53,21 +53,3 @@ func (lb *LoadBalancer) Forward(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, resp.StatusCode, time.Since(startTime))
 }
-
-func (lb *LoadBalancer) StartHealthCheck() {
-	for _, backend := range lb.backends {
-		go func(b *domain.Backend) {
-			for {
-				resp, err := http.Get(b.URL + b.Health)
-				if err != nil || resp.StatusCode != http.StatusOK {
-					b.Alive = false
-					log.Printf("Backend %s is down\n", b.URL)
-				} else {
-					b.Alive = true
-					log.Printf("Backend %s is up\n", b.URL)
-				}
-				time.Sleep(10 * time.Second)
-			}
-		}(backend)
-	}
-}
