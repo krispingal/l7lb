@@ -1,4 +1,4 @@
-package main
+package usecases
 
 import (
 	"log"
@@ -47,27 +47,11 @@ func (rl *RateLimiter) reset() {
 	}
 }
 
-func (rl *RateLimiter) getClientIP(r *http.Request) string {
+func (rl *RateLimiter) GetClientIP(r *http.Request) string {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		log.Printf("Could not parse client IP from RemoteAddr: %v", err)
 		return ""
 	}
 	return ip
-}
-
-func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientIP := rl.getClientIP(r)
-		if clientIP == "" {
-			http.Error(w, "Could not determine client IP", http.StatusInternalServerError)
-			return
-		}
-		if !rl.Allow(clientIP) {
-			log.Printf("Rate limit exceeded for %s", r.URL.Path)
-			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

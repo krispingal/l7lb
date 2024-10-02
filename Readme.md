@@ -17,7 +17,7 @@ This is a custom Layer 7 (L7) load balancer implemented in Go (Golang) that supp
 
 ```sh
 go install
-go run .
+go run cmd/api/main.go
 ```
 
 The load balancer will start on port 8443. You can modify the configuration in main.go to adjust backend groups and routes.

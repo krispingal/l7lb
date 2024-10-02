@@ -27,7 +27,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/", apiHandler)
 
-	fmt.Printf("Backend 3 listening on :%s\n", *port)
+	fmt.Printf("Backend server listening on :%s\n", *port)
 	err := http.ListenAndServe(":"+*port, nil)
 	if err != nil {
 		fmt.Printf("Error starting server on port %s: %v\n", *port, err)
