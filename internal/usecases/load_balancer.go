@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
@@ -12,23 +11,25 @@ import (
 
 type LoadBalancer struct {
 	backends []*domain.Backend
-	current  uint32
+	strategy LoadBalancingStrategy
 }
 
-func NewLoadBalancer(backends []*domain.Backend) *LoadBalancer {
+func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy) *LoadBalancer {
 	return &LoadBalancer{
 		backends: backends,
+		strategy: strategy,
 	}
 }
 
-func (lb *LoadBalancer) getNextBackend() *domain.Backend {
-	index := atomic.AddUint32(&lb.current, 1) % uint32(len(lb.backends))
-	return lb.backends[index]
-}
-
-func (lb *LoadBalancer) Forward(w http.ResponseWriter, r *http.Request) {
+func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	backend := lb.getNextBackend()
+	backend, err := lb.strategy.GetNextBackend(lb.backends)
+
+	if err != nil {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		log.Printf("Load balancer did not receive a next backend")
+		return
+	}
 
 	if !backend.Alive {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)

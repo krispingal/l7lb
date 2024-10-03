@@ -21,8 +21,9 @@ func main() {
 		{URL: "http://localhost:8082", Alive: true, Health: "/health"},
 	}
 
-	apiAlb := usecases.NewLoadBalancer(backendGroupA)
-	apiBlb := usecases.NewLoadBalancer(backendGroupB)
+	strategy := usecases.NewRoundRobinStrategy()
+	apiAlb := usecases.NewLoadBalancer(backendGroupA, strategy)
+	apiBlb := usecases.NewLoadBalancer(backendGroupB, strategy)
 	hcA := usecases.NewHealthChecker(backendGroupA, http.DefaultClient)
 	hcB := usecases.NewHealthChecker(backendGroupB, http.DefaultClient)
 
