@@ -1,6 +1,6 @@
 # L7 Load Balancer
 
-![build passing](https://github.com/krispingal/l7lb/blob/main/.github/workflows/build.yml/badge.svg?event=push)
+![build passing](https://github.com/krispingal/l7lb/actions/workflows/build.yml/badge.svg?event=push)
 
 This is a custom Layer 7 (L7) load balancer implemented in Go (Golang) that supports HTTP traffic routing, SSL termination, path-based routing, request latency tracking, and rate limiting. It can balance requests across multiple backend servers and manage different backend groups per API endpoint.
 

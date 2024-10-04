@@ -37,7 +37,7 @@ func main() {
 	}
 
 	router := httphandler.NewPathRouterWithLB(routes)
-	limiter := usecases.NewRateLimiter(100, time.Minute)
+	fixedWindowLimiter := usecases.NewFixedWindowRateLimiter(100, time.Minute)
 
 	// Load the SSL certificate and key
 	certFile := "cert.pem"
@@ -45,7 +45,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    ":8443",
-		Handler: httphandler.NewMiddleware(limiter, router),
+		Handler: httphandler.NewMiddleware(fixedWindowLimiter, router),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS13,
 		},

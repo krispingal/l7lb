@@ -43,7 +43,7 @@ func TestLoadBalancerRouteRequest(t *testing.T) {
 func TestLoadBalancerRouteRequestUnavailableBackend(t *testing.T) {
 	backend := &domain.Backend{
 		URL:   "http://mock-backend",
-		Alive: true,
+		Alive: false,
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
@@ -54,8 +54,8 @@ func TestLoadBalancerRouteRequestUnavailableBackend(t *testing.T) {
 
 	lb.RouteRequest(w, req)
 
-	if w.Result().StatusCode != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Result().StatusCode)
+	if w.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Result().StatusCode)
 	}
 }
 
