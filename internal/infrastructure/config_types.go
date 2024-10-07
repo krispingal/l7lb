@@ -1,7 +1,5 @@
 package infrastructure
 
-import "time"
-
 // Route holds the backends for each route
 type Route struct {
 	Path     string
@@ -14,10 +12,11 @@ type Backend struct {
 	Health string `mapstructure:"health"`
 }
 
-// Fixed window rate limiter config
-type FixedWindowRateLimiter struct {
-	Limit  int           `mapstructure:"limit"`
-	Window time.Duration `mapstructure:"window"`
+// RateLimiter defines the structure for rate limiter configuration
+type RateLimiter struct {
+	Type   string `mapstructure:"type"`   // e.g. "none", "sliding_window", "token_bucket"
+	Limit  int    `mapstructure:"limit"`  // request limit for the time window/bucket
+	Window string `mapstructure:"window"` // only for window-based rate limiters
 }
 
 // LoadBalancer holds the load balancer address
@@ -26,7 +25,7 @@ type LoadBalancer struct {
 }
 
 type Config struct {
-	Routes       []Route                `mapstructure:"routes"`
-	RateLimiter  FixedWindowRateLimiter `mapstructure:"rateLimiter"`
-	LoadBalancer LoadBalancer           `mapstructure:"loadbalancer"`
+	Routes       []Route      `mapstructure:"routes"`
+	RateLimiter  RateLimiter  `mapstructure:"rateLimiter"`
+	LoadBalancer LoadBalancer `mapstructure:"loadbalancer"`
 }

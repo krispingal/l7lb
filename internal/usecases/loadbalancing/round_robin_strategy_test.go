@@ -1,4 +1,4 @@
-package usecases
+package loadbalancing
 
 import (
 	"testing"

@@ -56,3 +56,5 @@ done
 1. Session Persistence: Implement sticky sessions to route requests from the same client to the same backend.
 1. Different routing strategies: Use different routing strategies like least connections or weighted round robin.
 1. Circuit breaker: Implement a circuit breaker to stop routing requests to servers that consecutively failures, until it recovers.
+1. Request retry policies
+1. Dynamic backend registration/removal

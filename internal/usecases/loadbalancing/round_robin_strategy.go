@@ -1,4 +1,4 @@
-package usecases
+package loadbalancing
 
 import (
 	"sync/atomic"

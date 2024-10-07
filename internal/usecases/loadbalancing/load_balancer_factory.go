@@ -2,7 +2,6 @@ package loadbalancing
 
 import (
 	config "github.com/krispingal/l7lb/internal/infrastructure"
-	"github.com/krispingal/l7lb/internal/usecases"
 )
 
 func CreateLoadBalanacers(config *config.Config) map[string]*LoadBalancer {
@@ -13,7 +12,7 @@ func CreateLoadBalanacers(config *config.Config) map[string]*LoadBalancer {
 
 		builder.WithBackends(route.Backends)
 
-		strategy := usecases.NewRoundRobinStrategy()
+		strategy := NewRoundRobinStrategy()
 		builder.WithStrategy(strategy)
 
 		lbMap[route.Path] = builder.Build()

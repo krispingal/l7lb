@@ -30,7 +30,6 @@ func (hc *HealthChecker) Start() {
 					log.Printf("Backend %s is down\n", b.URL)
 				} else {
 					b.Alive = true
-					log.Printf("Backend %s is up\n", b.URL)
 				}
 				time.Sleep(10 * time.Second)
 			}

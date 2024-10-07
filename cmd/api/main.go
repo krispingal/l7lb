@@ -10,6 +10,7 @@ import (
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
 	"github.com/krispingal/l7lb/internal/usecases"
 	"github.com/krispingal/l7lb/internal/usecases/loadbalancing"
+	"github.com/krispingal/l7lb/internal/usecases/ratelimiting"
 )
 
 func main() {
@@ -28,18 +29,40 @@ func main() {
 	}
 
 	router := httphandler.NewPathRouterWithLB(loadBalancers)
-	fixedWindowLimiter := usecases.NewFixedWindowRateLimiter(100, time.Minute)
-
+	var rateLimiter ratelimiting.RateLimiterInterface
+	switch config.RateLimiter.Type {
+	case "none":
+		rateLimiter = ratelimiting.NoOpRateLimiter{}
+	case "fixed_window":
+		windowDuration, err := time.ParseDuration(config.RateLimiter.Window)
+		if err != nil {
+			log.Fatalf("Invalid fixed window ratelimiter window duration: %v", err)
+		}
+		// fixed window rate limiter
+		rateLimiter = ratelimiting.NewFixedWindowRateLimiter(config.RateLimiter.Limit, windowDuration)
+	default:
+		log.Fatalf("Invalid rate limiter type: %s", config.RateLimiter.Type)
+	}
 	// Load the SSL certificate and key
 	certFile := "cert.pem"
 	keyFile := "key.pem"
 
-	server := &http.Server{
-		Addr:    config.LoadBalancer.Address,
-		Handler: httphandler.NewMiddleware(fixedWindowLimiter, router),
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS13,
+	// TLSConfig with optimized settings for security and performance
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12, // Allows TLS 1.2 fallback
+		MaxVersion: tls.VersionTLS13, // Prefer TLS 1.3 for security and performance
+
+		// Specify secure and performant cipher suites for TLS 1.2 (if needed)
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 		},
+	}
+
+	server := &http.Server{
+		Addr:      config.LoadBalancer.Address,
+		Handler:   httphandler.NewMiddleware(rateLimiter, router),
+		TLSConfig: tlsConfig,
 	}
 
 	log.Printf("Load Balancer started at %s\n", config.LoadBalancer.Address)

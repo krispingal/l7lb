@@ -4,7 +4,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/krispingal/l7lb/internal/usecases"
+	"github.com/krispingal/l7lb/internal/usecases/ratelimiting"
 )
 
 func getClientIP(r *http.Request) string {
@@ -15,7 +15,7 @@ func getClientIP(r *http.Request) string {
 	return ip
 }
 
-func NewMiddleware(limiter usecases.RateLimiterInterface, next http.Handler) http.Handler {
+func NewMiddleware(limiter ratelimiting.RateLimiterInterface, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP := getClientIP(r)
 		if clientIP == "" {
