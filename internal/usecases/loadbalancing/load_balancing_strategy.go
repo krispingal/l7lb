@@ -1,4 +1,4 @@
-package usecases
+package loadbalancing
 
 import "github.com/krispingal/l7lb/internal/domain"
 

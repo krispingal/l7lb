@@ -11,7 +11,7 @@ import (
 )
 
 func TestHealthChecker_BackendAlive(t *testing.T) {
-	// Create a test backend which is down intially
+	// Create a test backend which is down initially
 	backend := &domain.Backend{
 		URL:    "http://test-backend",
 		Health: "/health",
@@ -42,7 +42,7 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 }
 
 func TestHealthChecker_BackendDownt(t *testing.T) {
-	// Create a test backend which is alive intially
+	// Create a test backend which is alive initially
 	backend := &domain.Backend{
 		URL:    "http://test-backend",
 		Health: "/health",
@@ -73,7 +73,7 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 }
 
 func TestHealthChecker_HTTPClientError(t *testing.T) {
-	// Create a test backend which is alive intially
+	// Create a test backend which is alive initially
 	backend := &domain.Backend{
 		URL:    "http://test-backend",
 		Health: "/health",

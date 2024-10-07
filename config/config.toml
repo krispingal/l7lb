@@ -1,0 +1,22 @@
+[[routes]]
+path = "/apiA"
+[[routes.backends]]
+url = "http://localhost:8081"
+health = "/health"
+
+[[routes.backends]]
+url = "http://localhost:8083"
+health = "/health"
+
+[[routes]]
+path = "/apiB"
+[[routes.backends]]
+url = "http://localhost:8082"
+health = "/health"
+
+[rateLimiter]
+limit = 100
+window = "1m"
+
+[loadbalancer]
+address = ":8443"

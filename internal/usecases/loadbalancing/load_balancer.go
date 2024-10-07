@@ -1,4 +1,4 @@
-package usecases
+package loadbalancing
 
 import (
 	"io"
@@ -19,6 +19,14 @@ func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy)
 		backends: backends,
 		strategy: strategy,
 	}
+}
+
+func (lb *LoadBalancer) Backends() []*domain.Backend {
+	return lb.backends
+}
+
+func (lb *LoadBalancer) Strategy() LoadBalancingStrategy {
+	return lb.strategy
 }
 
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {

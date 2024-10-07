@@ -2,41 +2,32 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/krispingal/l7lb/internal/domain"
+	"github.com/krispingal/l7lb/internal/infrastructure"
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
 	"github.com/krispingal/l7lb/internal/usecases"
+	"github.com/krispingal/l7lb/internal/usecases/loadbalancing"
 )
 
 func main() {
-	backendGroupA := []*domain.Backend{
-		{URL: "http://localhost:8081", Alive: true, Health: "/health"},
-		{URL: "http://localhost:8083", Alive: true, Health: "/health"},
-	}
-	backendGroupB := []*domain.Backend{
-		{URL: "http://localhost:8082", Alive: true, Health: "/health"},
+	config, err := infrastructure.LoadConfig("config")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
 	}
 
-	strategy := usecases.NewRoundRobinStrategy()
-	apiAlb := usecases.NewLoadBalancer(backendGroupA, strategy)
-	apiBlb := usecases.NewLoadBalancer(backendGroupB, strategy)
-	hcA := usecases.NewHealthChecker(backendGroupA, http.DefaultClient)
-	hcB := usecases.NewHealthChecker(backendGroupB, http.DefaultClient)
+	loadBalancers := loadbalancing.CreateLoadBalanacers(config)
 
-	// Start health checks for backend servers
-	go hcA.Start()
-	go hcB.Start()
-
-	routes := map[string]*usecases.LoadBalancer{
-		"/apiA": apiAlb,
-		"/apiB": apiBlb,
+	// Start health checks for backend group
+	for _, lb := range loadBalancers {
+		backends := lb.Backends()
+		hc := usecases.NewHealthChecker(backends, http.DefaultClient)
+		go hc.Start()
 	}
 
-	router := httphandler.NewPathRouterWithLB(routes)
+	router := httphandler.NewPathRouterWithLB(loadBalancers)
 	fixedWindowLimiter := usecases.NewFixedWindowRateLimiter(100, time.Minute)
 
 	// Load the SSL certificate and key
@@ -44,13 +35,13 @@ func main() {
 	keyFile := "key.pem"
 
 	server := &http.Server{
-		Addr:    ":8443",
+		Addr:    config.LoadBalancer.Address,
 		Handler: httphandler.NewMiddleware(fixedWindowLimiter, router),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS13,
 		},
 	}
 
-	fmt.Println("Load Balancer started at :8443")
+	log.Printf("Load Balancer started at %s\n", config.LoadBalancer.Address)
 	log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
 }

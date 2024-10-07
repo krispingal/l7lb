@@ -1,4 +1,4 @@
-package usecases
+package loadbalancing
 
 import (
 	"errors"
@@ -22,8 +22,13 @@ func (ms *MockStrategy) GetNextBackend([]*domain.Backend) (*domain.Backend, erro
 }
 
 func TestLoadBalancerRouteRequest(t *testing.T) {
+	// Create a mock backend using httptest.Server to simulate the backend server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // Simulate a successful response
+	}))
+	defer mockServer.Close()
 	backend := &domain.Backend{
-		URL:   "http://mock-backend",
+		URL:   mockServer.URL,
 		Alive: true,
 	}
 
