@@ -9,16 +9,27 @@ health = "/health"
 url = "http://localhost:8083"
 health = "/health"
 
-[[routes]]
-path = "/apiB"
+#[[routes]]
+#path = "/apiB"
 [[routes.backends]]
 url = "http://localhost:8082"
 health = "/health"
 
+[[routes.backends]]
+url = "http://localhost:8084"
+health = "/health"
+
+[[routes.backends]]
+url = "http://localhost:8085"
+health = "/health"
+
 [rateLimiter]
-type = "fixed_window"  # can be "fixed_window", "token_bucket", "none"
-limit = 100
-window = "1m"
+type = "none"
+#type = "fixed_window"  # can be "fixed_window", "token_bucket", "none"
+#limit = 100
+#window = "1m"
 
 [loadbalancer]
 address = ":8443"
+cert_file = "cert.pem"
+key_file = "key.pem"

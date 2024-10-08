@@ -18,13 +18,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
-
+	transport := &http.Transport{
+		MaxIdleConns:        50, // Maximum number of idle connections
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableKeepAlives:   false, // Ensure keep-alives are enabled for connection reuse
+	}
+	pooledClient := &http.Client{
+		Transport: transport,
+		Timeout:   3 * time.Second,
+	}
 	loadBalancers := loadbalancing.CreateLoadBalanacers(config)
 
 	// Start health checks for backend group
 	for _, lb := range loadBalancers {
 		backends := lb.Backends()
-		hc := usecases.NewHealthChecker(backends, http.DefaultClient)
+		hc := usecases.NewHealthChecker(backends, pooledClient)
 		go hc.Start()
 	}
 
@@ -43,9 +52,6 @@ func main() {
 	default:
 		log.Fatalf("Invalid rate limiter type: %s", config.RateLimiter.Type)
 	}
-	// Load the SSL certificate and key
-	certFile := "cert.pem"
-	keyFile := "key.pem"
 
 	// TLSConfig with optimized settings for security and performance
 	tlsConfig := &tls.Config{
@@ -66,5 +72,5 @@ func main() {
 	}
 
 	log.Printf("Load Balancer started at %s\n", config.LoadBalancer.Address)
-	log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
+	log.Fatal(server.ListenAndServeTLS(config.LoadBalancer.CertFile, config.LoadBalancer.KeyFile))
 }

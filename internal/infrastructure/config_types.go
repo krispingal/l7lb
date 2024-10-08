@@ -21,7 +21,9 @@ type RateLimiter struct {
 
 // LoadBalancer holds the load balancer address
 type LoadBalancer struct {
-	Address string `mapstructure:"address"`
+	Address  string `mapstructure:"address"`
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
 }
 
 type Config struct {

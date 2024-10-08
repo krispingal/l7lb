@@ -30,6 +30,18 @@ func (lb *LoadBalancer) Strategy() LoadBalancingStrategy {
 	return lb.strategy
 }
 
+var client = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		DisableKeepAlives:     false,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+	Timeout: 10 * time.Second, // Set a timeout for backend requests
+}
+
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	backend, err := lb.strategy.GetNextBackend(lb.backends)
@@ -47,11 +59,32 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetURL := backend.URL + r.URL.Path + "?" + r.URL.RawQuery
-	resp, err := http.Get(targetURL)
-	if err != nil || resp.StatusCode >= 500 {
-		http.Error(w, "Backend unavailable", http.StatusServiceUnavailable)
-		log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, http.StatusServiceUnavailable, time.Since(startTime))
+
+	// Create a new request
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		http.Error(w, "Backend request error", http.StatusInternalServerError)
+		log.Printf("Backend: %s | Status: %d | Latency: %v | error: %v\n", backend.URL, http.StatusServiceUnavailable, time.Since(startTime), err)
 		return
+	}
+	req.Header = r.Header // Pass the original header
+	maxRetries := 3
+	var resp *http.Response
+	for i := 0; i < maxRetries; i++ {
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			break
+		}
+		// It is a Client-side (4xx) - do not retry
+		if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			break
+		}
+		if err != nil || resp.StatusCode >= 500 {
+			time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
+		} else {
+			// For other errors - non transient, break the loop
+			break
+		}
 	}
 	defer resp.Body.Close()
 

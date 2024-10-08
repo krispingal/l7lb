@@ -21,10 +21,18 @@ func (ms *MockStrategy) GetNextBackend([]*domain.Backend) (*domain.Backend, erro
 	return ms.backend, nil
 }
 
-func TestLoadBalancerRouteRequest(t *testing.T) {
-	// Create a mock backend using httptest.Server to simulate the backend server
+var retryCount int
+
+func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
+	// Create a mock backend that fails the first two times & succeeds the third time
+	retryCount = 0
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK) // Simulate a successful response
+		retryCount++
+		if retryCount < 3 {
+			w.WriteHeader(http.StatusInternalServerError) // Simulate a backend error
+		} else {
+			w.WriteHeader(http.StatusOK) // Simulate a successful response
+		}
 	}))
 	defer mockServer.Close()
 	backend := &domain.Backend{
@@ -45,10 +53,17 @@ func TestLoadBalancerRouteRequest(t *testing.T) {
 	}
 }
 
-func TestLoadBalancerRouteRequestUnavailableBackend(t *testing.T) {
+func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
+	retryCount = 0
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		retryCount++
+		w.WriteHeader(http.StatusServiceUnavailable) // Simulate a failing backend
+	}))
+	defer mockServer.Close()
+
 	backend := &domain.Backend{
-		URL:   "http://mock-backend",
-		Alive: false,
+		URL:   mockServer.URL,
+		Alive: true,
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
@@ -59,8 +74,13 @@ func TestLoadBalancerRouteRequestUnavailableBackend(t *testing.T) {
 
 	lb.RouteRequest(w, req)
 
+	// Check if the final response after retries is a 5xx failure
 	if w.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Result().StatusCode)
+	}
+
+	if retryCount != 3 {
+		t.Errorf("expected 3 retries, got %d", retryCount)
 	}
 }
 
