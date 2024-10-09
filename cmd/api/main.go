@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/tls"
 	"log"
 	"net/http"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
@@ -14,6 +17,9 @@ import (
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	config, err := infrastructure.LoadConfig("config")
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
@@ -37,7 +43,7 @@ func main() {
 		go hc.Start()
 	}
 
-	router := httphandler.NewPathRouterWithLB(loadBalancers)
+	router := httphandler.NewPathRouterExactPathWithLB(loadBalancers)
 	var rateLimiter ratelimiting.RateLimiterInterface
 	switch config.RateLimiter.Type {
 	case "none":
@@ -53,14 +59,24 @@ func main() {
 		log.Fatalf("Invalid rate limiter type: %s", config.RateLimiter.Type)
 	}
 
+	// Generate a session ticket key for session resumption
+	sessionTicketKey := [32]byte{}
+	if _, err := rand.Read(sessionTicketKey[:]); err != nil {
+		log.Fatalf("failed to generate a session ticket key: %v", err)
+	}
+
 	// TLSConfig with optimized settings for security and performance
 	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12, // Allows TLS 1.2 fallback
-		MaxVersion: tls.VersionTLS13, // Prefer TLS 1.3 for security and performance
+		MinVersion: tls.VersionTLS12,           // Allows TLS 1.2 fallback
+		MaxVersion: tls.VersionTLS13,           // Prefer TLS 1.3 for security and performance
+		NextProtos: []string{"h2", "http/1.1"}, // Enable HTTP/2
+
+		SessionTicketsDisabled: false,
+		SessionTicketKey:       sessionTicketKey,
 
 		// Specify secure and performant cipher suites for TLS 1.2 (if needed)
 		CipherSuites: []uint16{
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 		},
 	}

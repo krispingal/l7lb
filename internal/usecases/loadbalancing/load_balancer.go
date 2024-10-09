@@ -39,7 +39,7 @@ var client = &http.Client{
 		ResponseHeaderTimeout: 5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	},
-	Timeout: 10 * time.Second, // Set a timeout for backend requests
+	Timeout: 10 * time.Second, // Set a timeout for the overall backend requests
 }
 
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +67,8 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Backend: %s | Status: %d | Latency: %v | error: %v\n", backend.URL, http.StatusServiceUnavailable, time.Since(startTime), err)
 		return
 	}
+	defer req.Body.Close()
+
 	req.Header = r.Header // Pass the original header
 	maxRetries := 3
 	var resp *http.Response
@@ -80,19 +82,24 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil || resp.StatusCode >= 500 {
+			log.Printf("Error making request to backend %s: %v", backend.URL, err)
 			time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
 		} else {
 			// For other errors - non transient, break the loop
 			break
 		}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
 
 	for k, v := range resp.Header {
 		w.Header()[k] = v
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
-
+	buf := make([]byte, 32<<10) // Use a 32KB buffer
+	io.CopyBuffer(w, resp.Body, buf)
 	log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, resp.StatusCode, time.Since(startTime))
 }

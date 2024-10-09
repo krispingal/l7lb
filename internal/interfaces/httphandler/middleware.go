@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"log"
 	"net"
 	"net/http"
 
@@ -19,6 +20,7 @@ func NewMiddleware(limiter ratelimiting.RateLimiterInterface, next http.Handler)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP := getClientIP(r)
 		if clientIP == "" {
+			log.Printf("Could not determine client IP from req %v", r.Header)
 			http.Error(w, "Could not determine client IP", http.StatusInternalServerError)
 			return
 		}
