@@ -34,14 +34,24 @@ func main() {
 		Transport: transport,
 		Timeout:   3 * time.Second,
 	}
+	hc_healthy_freq, err1 := time.ParseDuration(config.HealthChecker.HealthyServerFrequency)
+	hc_unhealthy_freq, err2 := time.ParseDuration(config.HealthChecker.UnhealthyServerFrequency)
+	if err1 != nil || err2 != nil {
+		log.Fatalf("Invalid time duration provided for healthchecker frequency: %v, %v", err1, err2)
+	}
+
+	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, pooledClient)
+
 	loadBalancers := loadbalancing.CreateLoadBalanacers(config)
 
 	// Start health checks for backend group
 	for _, lb := range loadBalancers {
 		backends := lb.Backends()
-		hc := usecases.NewHealthChecker(backends, pooledClient)
-		go hc.Start()
+		for _, backend := range backends {
+			hc.AddBackend(backend)
+		}
 	}
+	hc.Start()
 
 	router := httphandler.NewPathRouterExactPathWithLB(loadBalancers)
 	var rateLimiter ratelimiting.RateLimiterInterface

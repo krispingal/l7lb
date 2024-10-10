@@ -26,8 +26,15 @@ type LoadBalancer struct {
 	KeyFile  string `mapstructure:"key_file"`
 }
 
+// Healthchecker holds the health checker info
+type HealthChecker struct {
+	HealthyServerFrequency   string `mapstructure:"healthyserver_freq"`
+	UnhealthyServerFrequency string `mapstructure:"unhealthyserver_freq"`
+}
+
 type Config struct {
-	Routes       []Route      `mapstructure:"routes"`
-	RateLimiter  RateLimiter  `mapstructure:"rateLimiter"`
-	LoadBalancer LoadBalancer `mapstructure:"loadbalancer"`
+	Routes        []Route       `mapstructure:"routes"`
+	RateLimiter   RateLimiter   `mapstructure:"rateLimiter"`
+	LoadBalancer  LoadBalancer  `mapstructure:"loadbalancer"`
+	HealthChecker HealthChecker `mapstructure:"healthchecker"`
 }

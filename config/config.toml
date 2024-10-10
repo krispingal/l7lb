@@ -33,3 +33,7 @@ type = "none"
 address = ":8443"
 cert_file = "cert.pem"
 key_file = "key.pem"
+
+[healthchecker]
+healthyserver_freq = "20s"
+unhealthyserver_freq = "5s"

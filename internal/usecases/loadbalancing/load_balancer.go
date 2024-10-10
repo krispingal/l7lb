@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sync"
 
 	"time"
 
@@ -35,11 +36,17 @@ var client = &http.Client{
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		DisableKeepAlives:     false,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 5 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	},
 	Timeout: 10 * time.Second, // Set a timeout for the overall backend requests
+}
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 64<<10) // 64KB buffer
+	},
 }
 
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
@@ -78,10 +85,10 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		// It is a Client-side (4xx) - do not retry
-		if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429) {
 			break
 		}
-		if err != nil || resp.StatusCode >= 500 {
+		if err != nil || resp.StatusCode >= 500 || resp.StatusCode == 429 {
 			log.Printf("Error making request to backend %s: %v", backend.URL, err)
 			time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
 		} else {
@@ -99,7 +106,8 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header()[k] = v
 	}
 	w.WriteHeader(resp.StatusCode)
-	buf := make([]byte, 32<<10) // Use a 32KB buffer
+	buf := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buf)
 	io.CopyBuffer(w, resp.Body, buf)
 	log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, resp.StatusCode, time.Since(startTime))
 }

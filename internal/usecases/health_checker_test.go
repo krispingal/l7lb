@@ -28,12 +28,13 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 	backend.URL = server.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker([]*domain.Backend{backend}, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
 
 	go hc.Start()
+	hc.AddBackend(backend)
 
 	// Wait for health check to run
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Verify that backend's Alive status is updated to true
 	if !backend.Alive {
@@ -60,12 +61,15 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 	backend.URL = server.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker([]*domain.Backend{backend}, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
 
 	go hc.Start()
 
+	// Add the backend to the healthy servers queue (initially considered healthy)
+	hc.healthyServers <- backend
+
 	// Wait for health check to run
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	if backend.Alive {
 		t.Errorf("Expected backend to be down, but it's alive")
@@ -93,13 +97,15 @@ func TestHealthChecker_HTTPClientError(t *testing.T) {
 	backend.URL = testServer.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker([]*domain.Backend{backend}, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
 
 	go hc.Start()
+	hc.healthyServers <- backend
 
 	// Wait for health check to run
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
+	// Verify that backend's Alive status is updated to false due to the client error
 	if backend.Alive {
 		t.Errorf("Expected backend to be down, but it's alive")
 	}
