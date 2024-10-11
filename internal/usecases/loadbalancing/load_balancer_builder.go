@@ -3,11 +3,13 @@ package loadbalancing
 import (
 	"github.com/krispingal/l7lb/internal/domain"
 	config "github.com/krispingal/l7lb/internal/infrastructure"
+	"go.uber.org/zap"
 )
 
 type LoadBalancerBuilder struct {
 	backends []*domain.Backend
 	strategy LoadBalancingStrategy
+	logger   *zap.Logger
 }
 
 // NewLoadBalancerBuilder initializes the builder
@@ -32,7 +34,13 @@ func (b *LoadBalancerBuilder) WithStrategy(strategy LoadBalancingStrategy) *Load
 	return b
 }
 
-// Build creates the final LoadBAlancer object
+// WithLogger sets the logger
+func (b *LoadBalancerBuilder) WithLogger(logger *zap.Logger) *LoadBalancerBuilder {
+	b.logger = logger
+	return b
+}
+
+// Build creates the final LoadBalancer object
 func (b *LoadBalancerBuilder) Build() *LoadBalancer {
-	return NewLoadBalancer(b.backends, b.strategy)
+	return NewLoadBalancer(b.backends, b.strategy, b.logger)
 }

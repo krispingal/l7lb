@@ -2,9 +2,10 @@ package loadbalancing
 
 import (
 	config "github.com/krispingal/l7lb/internal/infrastructure"
+	"go.uber.org/zap"
 )
 
-func CreateLoadBalanacers(config *config.Config) map[string]*LoadBalancer {
+func CreateLoadBalancers(config *config.Config, logger *zap.Logger) map[string]*LoadBalancer {
 	lbMap := make(map[string]*LoadBalancer)
 
 	for _, route := range config.Routes {
@@ -14,6 +15,7 @@ func CreateLoadBalanacers(config *config.Config) map[string]*LoadBalancer {
 
 		strategy := NewRoundRobinStrategy()
 		builder.WithStrategy(strategy)
+		builder.WithLogger(logger)
 
 		lbMap[route.Path] = builder.Build()
 	}

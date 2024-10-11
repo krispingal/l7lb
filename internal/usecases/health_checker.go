@@ -1,11 +1,11 @@
 package usecases
 
 import (
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"go.uber.org/zap"
 )
 
 type HealthChecker struct {
@@ -14,15 +14,17 @@ type HealthChecker struct {
 	healthyFrequency   time.Duration
 	unhealthyFrequency time.Duration
 	httpClient         *http.Client
+	logger             *zap.Logger
 }
 
-func NewHealthChecker(healthyFreq time.Duration, unhealthyFreq time.Duration, httpClient *http.Client) *HealthChecker {
+func NewHealthChecker(healthyFreq time.Duration, unhealthyFreq time.Duration, httpClient *http.Client, logger *zap.Logger) *HealthChecker {
 	return &HealthChecker{
 		healthyServers:     make(chan *domain.Backend, 1000),
 		unhealthyServers:   make(chan *domain.Backend, 1000),
 		healthyFrequency:   healthyFreq,
 		unhealthyFrequency: unhealthyFreq,
 		httpClient:         httpClient,
+		logger:             logger,
 	}
 }
 
@@ -32,7 +34,7 @@ func (hc *HealthChecker) checkHealthyServers() {
 		resp, err := hc.httpClient.Get(backend.URL + backend.Health)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			backend.Alive = false
-			log.Printf("Backend %s moved to unhealthy\n", backend.URL)
+			hc.logger.Info("Backend moved to unhealthy", zap.String("backend_url", backend.URL))
 			hc.unhealthyServers <- backend
 		}
 		time.Sleep(hc.healthyFrequency)
@@ -45,7 +47,7 @@ func (hc *HealthChecker) checkUnhealthyServers() {
 		resp, err := hc.httpClient.Get(backend.URL + backend.Health)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			backend.Alive = true
-			log.Printf("Backend %s moved to healthy\n", backend.URL)
+			hc.logger.Info("Backend moved to healthy", zap.String("backend_url", backend.URL))
 			hc.healthyServers <- backend
 		}
 		time.Sleep(hc.unhealthyFrequency)

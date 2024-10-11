@@ -2,24 +2,26 @@ package loadbalancing
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"sync"
 
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"go.uber.org/zap"
 )
 
 type LoadBalancer struct {
 	backends []*domain.Backend
 	strategy LoadBalancingStrategy
+	logger   *zap.Logger
 }
 
-func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy) *LoadBalancer {
+func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy, logger *zap.Logger) *LoadBalancer {
 	return &LoadBalancer{
 		backends: backends,
 		strategy: strategy,
+		logger:   logger,
 	}
 }
 
@@ -55,13 +57,13 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
-		log.Printf("Load balancer did not receive a next backend")
+		lb.logger.Error("Load balancer did not receive a next backend")
 		return
 	}
 
 	if !backend.Alive {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
-		log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, http.StatusServiceUnavailable, time.Since(startTime))
+		lb.logger.Error("Backend unavailable", zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
 		return
 	}
 
@@ -71,7 +73,7 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequest(r.Method, targetURL, r.Body)
 	if err != nil {
 		http.Error(w, "Backend request error", http.StatusInternalServerError)
-		log.Printf("Backend: %s | Status: %d | Latency: %v | error: %v\n", backend.URL, http.StatusServiceUnavailable, time.Since(startTime), err)
+		lb.logger.Error("Backend unavailable", zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
 		return
 	}
 	defer req.Body.Close()
@@ -89,7 +91,7 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil || resp.StatusCode >= 500 || resp.StatusCode == 429 {
-			log.Printf("Error making request to backend %s: %v", backend.URL, err)
+			lb.logger.Error("Error making request to backend", zap.String("backend_url", backend.URL), zap.Error(err))
 			time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
 		} else {
 			// For other errors - non transient, break the loop
@@ -109,5 +111,5 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	buf := bufferPool.Get().([]byte)
 	defer bufferPool.Put(buf)
 	io.CopyBuffer(w, resp.Body, buf)
-	log.Printf("Backend: %s | Status: %d | Latency: %v\n", backend.URL, resp.StatusCode, time.Since(startTime))
+	lb.logger.Debug("Request routed successfully", zap.String("url", backend.URL), zap.Int("status", resp.StatusCode), zap.Duration("duration", time.Since(startTime)))
 }

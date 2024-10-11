@@ -1,11 +1,11 @@
 package httphandler
 
 import (
-	"log"
 	"net"
 	"net/http"
 
 	"github.com/krispingal/l7lb/internal/usecases/ratelimiting"
+	"go.uber.org/zap"
 )
 
 func getClientIP(r *http.Request) string {
@@ -16,11 +16,11 @@ func getClientIP(r *http.Request) string {
 	return ip
 }
 
-func NewMiddleware(limiter ratelimiting.RateLimiterInterface, next http.Handler) http.Handler {
+func NewMiddleware(limiter ratelimiting.RateLimiterInterface, next http.Handler, logger *zap.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP := getClientIP(r)
 		if clientIP == "" {
-			log.Printf("Could not determine client IP from req %v", r.Header)
+			logger.Error("Could not determine client IP from req", zap.Any("request_header", r.Header))
 			http.Error(w, "Could not determine client IP", http.StatusInternalServerError)
 			return
 		}

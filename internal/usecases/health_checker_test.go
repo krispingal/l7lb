@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestHealthChecker_BackendAlive(t *testing.T) {
@@ -17,6 +18,7 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 		Health: "/health",
 		Alive:  false,
 	}
+	testLogger := zaptest.NewLogger(t)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -28,7 +30,7 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 	backend.URL = server.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
 
 	go hc.Start()
 	hc.AddBackend(backend)
@@ -49,6 +51,7 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 		Health: "/health",
 		Alive:  true,
 	}
+	testLogger := zaptest.NewLogger(t)
 
 	// Setup an HTTP test server that simulates a failed backend
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +64,7 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 	backend.URL = server.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
 
 	go hc.Start()
 
@@ -83,6 +86,7 @@ func TestHealthChecker_HTTPClientError(t *testing.T) {
 		Health: "/health",
 		Alive:  true,
 	}
+	testLogger := zaptest.NewLogger(t)
 
 	// Overrride the backend URL to point to non-existent URL
 	// to simulate an error in the healthcheck
@@ -97,7 +101,7 @@ func TestHealthChecker_HTTPClientError(t *testing.T) {
 	backend.URL = testServer.URL
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
 
 	go hc.Start()
 	hc.healthyServers <- backend

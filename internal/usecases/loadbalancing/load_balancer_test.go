@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"go.uber.org/zap/zaptest"
 )
 
 type MockStrategy struct {
@@ -34,6 +35,7 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 			w.WriteHeader(http.StatusOK) // Simulate a successful response
 		}
 	}))
+	testLogger := zaptest.NewLogger(t)
 	defer mockServer.Close()
 	backend := &domain.Backend{
 		URL:   mockServer.URL,
@@ -41,7 +43,7 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy)
+	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()
@@ -54,6 +56,7 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 }
 
 func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
+	testLogger := zaptest.NewLogger(t)
 	retryCount = 0
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retryCount++
@@ -67,7 +70,7 @@ func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy)
+	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()
@@ -89,8 +92,9 @@ func TestLoadBalancerRouteRequestStrategyError(t *testing.T) {
 		URL:   "http://mock-backend",
 		Alive: true,
 	}
+	testLogger := zaptest.NewLogger(t)
 	mockStrategy := &MockStrategy{err: errors.New("strategy error")}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy)
+	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()

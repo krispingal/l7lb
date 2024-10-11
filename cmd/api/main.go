@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"crypto/tls"
-	"log"
 	"net/http"
 	"time"
 
@@ -17,12 +16,16 @@ import (
 )
 
 func main() {
+	infrastructure.InitLogger()
+	logger := infrastructure.Logger
+	sugar := infrastructure.Logger.Sugar()
+
 	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
+		sugar.Info(http.ListenAndServe("localhost:6060", nil))
 	}()
 	config, err := infrastructure.LoadConfig("config")
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		sugar.Fatalf("Error loading config: %v", err)
 	}
 	transport := &http.Transport{
 		MaxIdleConns:        50, // Maximum number of idle connections
@@ -37,12 +40,12 @@ func main() {
 	hc_healthy_freq, err1 := time.ParseDuration(config.HealthChecker.HealthyServerFrequency)
 	hc_unhealthy_freq, err2 := time.ParseDuration(config.HealthChecker.UnhealthyServerFrequency)
 	if err1 != nil || err2 != nil {
-		log.Fatalf("Invalid time duration provided for healthchecker frequency: %v, %v", err1, err2)
+		sugar.Fatalf("Invalid time duration provided for healthchecker frequency: %v, %v", err1, err2)
 	}
 
-	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, pooledClient)
+	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, pooledClient, logger)
 
-	loadBalancers := loadbalancing.CreateLoadBalanacers(config)
+	loadBalancers := loadbalancing.CreateLoadBalancers(config, logger)
 
 	// Start health checks for backend group
 	for _, lb := range loadBalancers {
@@ -61,18 +64,18 @@ func main() {
 	case "fixed_window":
 		windowDuration, err := time.ParseDuration(config.RateLimiter.Window)
 		if err != nil {
-			log.Fatalf("Invalid fixed window ratelimiter window duration: %v", err)
+			sugar.Fatalf("Invalid fixed window ratelimiter window duration: %v", err)
 		}
 		// fixed window rate limiter
 		rateLimiter = ratelimiting.NewFixedWindowRateLimiter(config.RateLimiter.Limit, windowDuration)
 	default:
-		log.Fatalf("Invalid rate limiter type: %s", config.RateLimiter.Type)
+		sugar.Fatalf("Invalid rate limiter type: %s", config.RateLimiter.Type)
 	}
 
 	// Generate a session ticket key for session resumption
 	sessionTicketKey := [32]byte{}
 	if _, err := rand.Read(sessionTicketKey[:]); err != nil {
-		log.Fatalf("failed to generate a session ticket key: %v", err)
+		sugar.Fatalf("failed to generate a session ticket key: %v", err)
 	}
 
 	// TLSConfig with optimized settings for security and performance
@@ -93,10 +96,10 @@ func main() {
 
 	server := &http.Server{
 		Addr:      config.LoadBalancer.Address,
-		Handler:   httphandler.NewMiddleware(rateLimiter, router),
+		Handler:   httphandler.NewMiddleware(rateLimiter, router, logger),
 		TLSConfig: tlsConfig,
 	}
 
-	log.Printf("Load Balancer started at %s\n", config.LoadBalancer.Address)
-	log.Fatal(server.ListenAndServeTLS(config.LoadBalancer.CertFile, config.LoadBalancer.KeyFile))
+	sugar.Infof("Load Balancer started at %s", config.LoadBalancer.Address)
+	sugar.Fatal(server.ListenAndServeTLS(config.LoadBalancer.CertFile, config.LoadBalancer.KeyFile))
 }
