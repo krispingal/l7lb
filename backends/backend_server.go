@@ -17,7 +17,6 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		response = "Hello from backend!"
 	}
 	fmt.Fprintf(w, response)
-	fmt.Printf("Received req with method: %s and query : %s\n", r.Method, r.URL.RawQuery)
 }
 
 func main() {

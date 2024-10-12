@@ -8,13 +8,16 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"github.com/krispingal/l7lb/internal/usecases"
 	"go.uber.org/zap"
 )
 
 type LoadBalancer struct {
-	backends []*domain.Backend
-	strategy LoadBalancingStrategy
-	logger   *zap.Logger
+	backends        []*domain.Backend
+	strategy        LoadBalancingStrategy
+	logger          *zap.Logger
+	mu              sync.RWMutex // mutex to protect healthy backend list
+	healthyBackends []*domain.Backend
 }
 
 func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy, logger *zap.Logger) *LoadBalancer {
@@ -31,6 +34,22 @@ func (lb *LoadBalancer) Backends() []*domain.Backend {
 
 func (lb *LoadBalancer) Strategy() LoadBalancingStrategy {
 	return lb.strategy
+}
+
+func (lb *LoadBalancer) SubscribeToHealthChecker(hc *usecases.HealthChecker) {
+	go func() {
+		for healthyList := range hc.HealthyBackendChan {
+			lb.mu.Lock()
+			lb.healthyBackends = healthyList
+			lb.mu.Unlock()
+		}
+	}()
+}
+
+func (lb *LoadBalancer) getHealthyBackends() []*domain.Backend {
+	lb.mu.RLock()
+	defer lb.mu.RUnlock()
+	return lb.healthyBackends
 }
 
 var client = &http.Client{
@@ -53,7 +72,11 @@ var bufferPool = sync.Pool{
 
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	backend, err := lb.strategy.GetNextBackend(lb.backends)
+	backends := lb.getHealthyBackends()
+	if len(backends) == 0 {
+		lb.logger.Error("No healthy backends available", zap.Any("request_url", r.URL))
+	}
+	backend, err := lb.strategy.GetNextBackend(backends)
 
 	if err != nil {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
@@ -111,5 +134,5 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	buf := bufferPool.Get().([]byte)
 	defer bufferPool.Put(buf)
 	io.CopyBuffer(w, resp.Body, buf)
-	lb.logger.Debug("Request routed successfully", zap.String("url", backend.URL), zap.Int("status", resp.StatusCode), zap.Duration("duration", time.Since(startTime)))
+	lb.logger.Debug("Request routed successfully", zap.String("backend_url", backend.URL), zap.Int("status", resp.StatusCode), zap.Duration("duration", time.Since(startTime)))
 }

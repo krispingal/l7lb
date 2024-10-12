@@ -68,8 +68,8 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 
 	go hc.Start()
 
-	// Add the backend to the healthy servers queue (initially considered healthy)
-	hc.healthyServers <- backend
+	// Add the backend to the servers queue (initially considered healthy)
+	hc.serverChan <- backend
 
 	// Wait for health check to run
 	time.Sleep(2 * time.Second)
@@ -104,7 +104,7 @@ func TestHealthChecker_HTTPClientError(t *testing.T) {
 	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
 
 	go hc.Start()
-	hc.healthyServers <- backend
+	hc.serverChan <- backend
 
 	// Wait for health check to run
 	time.Sleep(2 * time.Second)
