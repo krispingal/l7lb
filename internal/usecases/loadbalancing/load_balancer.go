@@ -8,48 +8,108 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
-	"github.com/krispingal/l7lb/internal/usecases"
 	"go.uber.org/zap"
 )
 
 type LoadBalancer struct {
-	backends        []*domain.Backend
-	strategy        LoadBalancingStrategy
-	logger          *zap.Logger
-	mu              sync.RWMutex // mutex to protect healthy backend list
-	healthyBackends []*domain.Backend
+	strategy         LoadBalancingStrategy
+	healthUpdateChan chan *domain.BackendHealthUpdate
+	healthyBackends  sync.Map     // map[string][]*domain.Backend
+	mu               sync.RWMutex // mutex to protect healthy backend list
+	logger           *zap.Logger
 }
 
-func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy, logger *zap.Logger) *LoadBalancer {
+func NewLoadBalancer(strategy LoadBalancingStrategy, logger *zap.Logger) domain.LoadBalancer {
 	return &LoadBalancer{
-		backends: backends,
-		strategy: strategy,
-		logger:   logger,
+		strategy:         strategy,
+		healthUpdateChan: make(chan *domain.BackendHealthUpdate, 20),
+		healthyBackends:  sync.Map{},
+		logger:           logger,
 	}
 }
 
-func (lb *LoadBalancer) Backends() []*domain.Backend {
-	return lb.backends
+// HealthyBackends returns a list of healthy backends.
+func (lb *LoadBalancer) HealthyBackends() []*domain.Backend {
+	var allBackends []*domain.Backend
+	lb.healthyBackends.Range(func(groupId, backend interface{}) bool {
+		backends, ok := backend.([]*domain.Backend)
+		if !ok {
+			lb.logger.Error("Unable to construct backends")
+			return false
+		}
+		allBackends = append(allBackends, backends...)
+		return true
+	})
+	return allBackends
 }
 
 func (lb *LoadBalancer) Strategy() LoadBalancingStrategy {
 	return lb.strategy
 }
 
-func (lb *LoadBalancer) SubscribeToHealthChecker(hc *usecases.HealthChecker) {
-	go func() {
-		for healthyList := range hc.HealthyBackendChan {
-			lb.mu.Lock()
-			lb.healthyBackends = healthyList
-			lb.mu.Unlock()
-		}
-	}()
+func (lb *LoadBalancer) ListenForHealthUpdates() {
+	for backendUpdate := range lb.healthUpdateChan {
+		lb.UpdateBackend(*backendUpdate)
+	}
 }
 
-func (lb *LoadBalancer) getHealthyBackends() []*domain.Backend {
-	lb.mu.RLock()
-	defer lb.mu.RUnlock()
-	return lb.healthyBackends
+// UpdateBackend updates a backends heath status
+func (lb *LoadBalancer) UpdateBackend(update domain.BackendHealthUpdate) {
+	if update.IsHealthy {
+		lb.addToHealthyBackends(update.Backend, update.GroupId)
+	} else {
+		lb.removeFromHealthyBackends(update.Backend, update.GroupId)
+	}
+}
+
+// addToHealthyBackends adds a given backend to the list of healthybackends under a group.
+func (lb *LoadBalancer) addToHealthyBackends(backend *domain.Backend, groupId string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	value, ok := lb.healthyBackends.Load(groupId)
+	if !ok {
+		lb.healthyBackends.Store(groupId, []*domain.Backend{backend})
+		return
+	}
+
+	hbs, ok := value.([]*domain.Backend)
+	if !ok {
+		lb.logger.Error("Unexpected type in healthybackends")
+		return
+	}
+
+	for _, b := range hbs {
+		if b.URL == backend.URL {
+			return // Backend is already in the healthy list
+		}
+	}
+	// Add to the healthy backends
+	lb.healthyBackends.Store(groupId, append(hbs, backend))
+}
+
+// removeFromHealthyBackends removes a given backend from the list of healthybackends under a group
+func (lb *LoadBalancer) removeFromHealthyBackends(backend *domain.Backend, groupId string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	value, ok := lb.healthyBackends.Load(groupId)
+	if !ok {
+		return
+	}
+
+	hbs, ok := value.([]*domain.Backend)
+	if !ok {
+		lb.logger.Error("Unexpected type in healthybackends")
+		return
+	}
+
+	for i, b := range hbs {
+		if b.URL == backend.URL {
+			lb.healthyBackends.Store(groupId, append(hbs[:i], hbs[i+1:]...))
+			return // Backend is already in the healthy list
+		}
+	}
 }
 
 var client = &http.Client{
@@ -70,23 +130,21 @@ var bufferPool = sync.Pool{
 	},
 }
 
-func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
+func (lb *LoadBalancer) RouteRequestToGroup(w http.ResponseWriter, r *http.Request, groupId string) {
 	startTime := time.Now()
-	backends := lb.getHealthyBackends()
-	if len(backends) == 0 {
-		lb.logger.Error("No healthy backends available", zap.Any("request_url", r.URL))
+	value, ok := lb.healthyBackends.Load(groupId)
+	if !ok {
+		lb.logger.Error("No healthy backends found in loadbalancer for group", zap.String("group_id", groupId))
+	}
+	backends, ok := value.([]*domain.Backend)
+	if !ok {
+		lb.logger.Error("Unexpected type in healthybackends")
 	}
 	backend, err := lb.strategy.GetNextBackend(backends)
 
 	if err != nil {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		lb.logger.Error("Load balancer did not receive a next backend")
-		return
-	}
-
-	if !backend.Alive {
-		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
-		lb.logger.Error("Backend unavailable", zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
 		return
 	}
 

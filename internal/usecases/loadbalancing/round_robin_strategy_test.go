@@ -8,9 +8,9 @@ import (
 
 func TestRoundRobinStrategy(t *testing.T) {
 	backends := []*domain.Backend{
-		{URL: "http://localhost:8081", Alive: true},
-		{URL: "http://localhost:8082", Alive: true},
-		{URL: "http://localhost:8083", Alive: true},
+		{URL: "http://localhost:8081", Health: "/health"},
+		{URL: "http://localhost:8082", Health: "/health"},
+		{URL: "http://localhost:8083", Health: "/health"},
 	}
 	strategy := NewRoundRobinStrategy()
 	selected, err := strategy.GetNextBackend(backends)

@@ -2,14 +2,20 @@ package infrastructure
 
 // Route holds the backends for each route
 type Route struct {
-	Path     string
-	Backends []Backend `mapstructure:"backends"`
+	Path    string `mapstructure:"path"`
+	GroupId string `mapstructure:"backends"`
 }
 
 // Backend holds the individual backend server configuration
 type Backend struct {
 	URL    string `mapstructure:"url"`
 	Health string `mapstructure:"health"`
+}
+
+// BackendGroup holds a group of backends under a specific group ID
+type BackendGroup struct {
+	GroupId  string    `mapstructure:"groupId"`
+	Backends []Backend `mapstructure:"backends"`
 }
 
 // RateLimiter defines the structure for rate limiter configuration
@@ -32,9 +38,11 @@ type HealthChecker struct {
 	UnhealthyServerFrequency string `mapstructure:"unhealthyserver_freq"`
 }
 
+// Config holds the overall configuration
 type Config struct {
-	Routes        []Route       `mapstructure:"routes"`
-	RateLimiter   RateLimiter   `mapstructure:"rateLimiter"`
-	LoadBalancer  LoadBalancer  `mapstructure:"loadbalancer"`
-	HealthChecker HealthChecker `mapstructure:"healthchecker"`
+	Routes        []Route        `mapstructure:"routes"`
+	BackendGroups []BackendGroup `mapstructure:"backendGroups"`
+	RateLimiter   RateLimiter    `mapstructure:"rateLimiter"`
+	LoadBalancer  LoadBalancer   `mapstructure:"loadbalancer"`
+	HealthChecker HealthChecker  `mapstructure:"healthchecker"`
 }

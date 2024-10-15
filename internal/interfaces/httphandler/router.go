@@ -4,28 +4,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/krispingal/l7lb/internal/usecases/loadbalancing"
+	"github.com/krispingal/l7lb/internal/infrastructure"
 )
 
-func NewPathRouterWithLB(routes map[string]*loadbalancing.LoadBalancer) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for path, lb := range routes {
-			if strings.HasPrefix(r.URL.Path, path) {
-				lb.RouteRequest(w, r)
-				return
-			}
-		}
-	})
-}
-
-func NewPathRouterExactPathWithLB(routes map[string]*loadbalancing.LoadBalancer) http.Handler {
+func NewPathRouterExactPathWithLB(routeManager *infrastructure.RouteManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Normalize the path by trimming trailing slashes
 		path := strings.TrimSuffix(r.URL.Path, "/")
-		if lb, exists := routes[path]; exists {
-			lb.RouteRequest(w, r)
-		} else {
+		if lbs, backendGroup, err := routeManager.GetLoadBalancersAndGroupForRoute(path); err != nil {
 			http.NotFound(w, r)
+		} else {
+			// TODO use consistent hashing or other techniques to pick a loadbalancer
+			lbs[0].RouteRequest(w, r, backendGroup)
 		}
 	})
 }

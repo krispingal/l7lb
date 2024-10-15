@@ -1,25 +1,33 @@
 # This file is currently used for dev testing.
 [[routes]]
 path = "/apiA"
-[[routes.backends]]
+groupId = "groupA
+
+[[routes]]
+path = "/apiB"
+groupId = "groupB
+
+[[backendGroups]]
+groupId = "groupA
+[[backendGroups.backends]]
 url = "http://localhost:8081"
 health = "/health"
 
-[[routes.backends]]
+[[backendGroups.backends]]
 url = "http://localhost:8083"
 health = "/health"
 
-#[[routes]]
-#path = "/apiB"
-[[routes.backends]]
+[[backendGroups]]
+groupId  "groupB"
+[[backendGroups.backends]]
 url = "http://localhost:8082"
 health = "/health"
 
-[[routes.backends]]
+[[backendGroups.backends]]
 url = "http://localhost:8084"
 health = "/health"
 
-[[routes.backends]]
+[[backendGroups.backends]]
 url = "http://localhost:8085"
 health = "/health"
 

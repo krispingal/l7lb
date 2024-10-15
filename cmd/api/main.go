@@ -11,7 +11,6 @@ import (
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
 	"github.com/krispingal/l7lb/internal/usecases"
-	"github.com/krispingal/l7lb/internal/usecases/loadbalancing"
 	"github.com/krispingal/l7lb/internal/usecases/ratelimiting"
 )
 
@@ -23,10 +22,6 @@ func main() {
 	// go func() {
 	// 	sugar.Info(http.ListenAndServe("localhost:6060", nil))
 	// }()
-	config, err := infrastructure.LoadConfig("config")
-	if err != nil {
-		sugar.Fatalf("Error loading config: %v", err)
-	}
 	transport := &http.Transport{
 		MaxIdleConns:        50, // Maximum number of idle connections
 		MaxIdleConnsPerHost: 10,
@@ -37,26 +32,23 @@ func main() {
 		Transport: transport,
 		Timeout:   3 * time.Second,
 	}
+	config, err := infrastructure.LoadConfig("config")
+	if err != nil {
+		sugar.Fatalf("Error loading config: %v", err)
+	}
 	hc_healthy_freq, err1 := time.ParseDuration(config.HealthChecker.HealthyServerFrequency)
 	hc_unhealthy_freq, err2 := time.ParseDuration(config.HealthChecker.UnhealthyServerFrequency)
 	if err1 != nil || err2 != nil {
 		sugar.Fatalf("Invalid time duration provided for healthchecker frequency: %v, %v", err1, err2)
 	}
+	routeManager := infrastructure.NewRouteManager(*config)
 
-	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, pooledClient, logger)
-
-	loadBalancers := loadbalancing.CreateLoadBalancers(config, logger)
+	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, routeManager.RoutingTable, pooledClient, logger)
 
 	// Start health checks for backend group
-	for _, lb := range loadBalancers {
-		lb.SubscribeToHealthChecker(hc) // Subscribe each LB to the healthchecker's channel
-		for _, backend := range lb.Backends() {
-			hc.AddBackend(backend)
-		}
-	}
 	hc.Start()
 
-	router := httphandler.NewPathRouterExactPathWithLB(loadBalancers)
+	router := httphandler.NewPathRouterExactPathWithLB(routeManager)
 	var rateLimiter ratelimiting.RateLimiterInterface
 	switch config.RateLimiter.Type {
 	case "none":
