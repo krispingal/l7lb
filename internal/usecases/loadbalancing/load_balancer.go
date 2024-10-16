@@ -3,47 +3,100 @@ package loadbalancing
 import (
 	"io"
 	"net/http"
+	"reflect"
 	"sync"
 
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
-	"github.com/krispingal/l7lb/internal/usecases"
+	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap"
 )
 
 type LoadBalancer struct {
-	backends        []*domain.Backend
-	strategy        LoadBalancingStrategy
-	logger          *zap.Logger
-	mu              sync.RWMutex // mutex to protect healthy backend list
-	healthyBackends []*domain.Backend
+	backendRegistry      *infrastructure.BackendRegistry
+	strategy             LoadBalancingStrategy
+	logger               *zap.Logger
+	mu                   sync.RWMutex // mutex to protect healthy backend list
+	healthUpdateChannels []<-chan domain.BackendStatus
+	healthyBackends      []*domain.Backend
 }
 
-func NewLoadBalancer(backends []*domain.Backend, strategy LoadBalancingStrategy, logger *zap.Logger) *LoadBalancer {
-	return &LoadBalancer{
-		backends: backends,
-		strategy: strategy,
-		logger:   logger,
+func NewLoadBalancer(registry *infrastructure.BackendRegistry, strategy LoadBalancingStrategy, healthChannels []<-chan domain.BackendStatus, logger *zap.Logger) *LoadBalancer {
+	lb := &LoadBalancer{
+		backendRegistry:      registry,
+		strategy:             strategy,
+		healthUpdateChannels: healthChannels,
+		logger:               logger,
 	}
-}
 
-func (lb *LoadBalancer) Backends() []*domain.Backend {
-	return lb.backends
+	go lb.listenToHealthUpdates()
+	return lb
 }
 
 func (lb *LoadBalancer) Strategy() LoadBalancingStrategy {
 	return lb.strategy
 }
 
-func (lb *LoadBalancer) SubscribeToHealthChecker(hc *usecases.HealthChecker) {
-	go func() {
-		for healthyList := range hc.HealthyBackendChan {
-			lb.mu.Lock()
-			lb.healthyBackends = healthyList
-			lb.mu.Unlock()
+func (lb *LoadBalancer) listenToHealthUpdates() {
+	cases := make([]reflect.SelectCase, len(lb.healthUpdateChannels))
+	lb.logger.Info("Listening for health updates in loadbalancer")
+
+	for i, ch := range lb.healthUpdateChannels {
+		cases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(ch),
 		}
-	}()
+	}
+
+	for {
+		// Wait for any of the channels to receive a value
+		chosen, value, ok := reflect.Select(cases)
+		if ok {
+			update := value.Interface().(domain.BackendStatus)
+			lb.logger.Debug("Received backend health update", zap.String("backend_url", update.URL))
+			lb.updateProcessDispatcher(update)
+		} else {
+			lb.logger.Warn("BackendHealthUpdateChannel was closed", zap.Int("update_channel", chosen))
+		}
+	}
+}
+
+func (lb *LoadBalancer) updateProcessDispatcher(update domain.BackendStatus) {
+	if update.IsHealthy {
+		lb.addToHealthyBackends(update.URL)
+	} else {
+		lb.removeFromHealthyBackends(update.URL)
+	}
+}
+
+func (lb *LoadBalancer) addToHealthyBackends(backendURL string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	for _, backend := range lb.healthyBackends {
+		if backend.URL == backendURL {
+			return
+		}
+	}
+	backend, ok := lb.backendRegistry.GetBackendByURL(backendURL)
+	if !ok {
+		lb.logger.Error("No backend forund for url", zap.String("backend_url", backendURL))
+		return
+	}
+	lb.healthyBackends = append(lb.healthyBackends, &backend)
+}
+
+func (lb *LoadBalancer) removeFromHealthyBackends(backendURL string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	for i, backend := range lb.healthyBackends {
+		if backend.URL == backendURL {
+			lb.healthyBackends = append(lb.healthyBackends[:i], lb.healthyBackends[i+1:]...)
+			return
+		}
+	}
 }
 
 func (lb *LoadBalancer) getHealthyBackends() []*domain.Backend {
@@ -81,12 +134,6 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		lb.logger.Error("Load balancer did not receive a next backend")
-		return
-	}
-
-	if !backend.Alive {
-		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
-		lb.logger.Error("Backend unavailable", zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
 		return
 	}
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -28,9 +29,10 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 	// Overrride the backend URL to point to the test server
 	// with this we simulate backend getting back online
 	backend.URL = server.URL
+	registry := infrastructure.NewBackendRegistry()
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
 
 	go hc.Start()
 	hc.AddBackend(backend)
@@ -41,6 +43,12 @@ func TestHealthChecker_BackendAlive(t *testing.T) {
 	// Verify that backend's Alive status is updated to true
 	if !backend.Alive {
 		t.Errorf("Expected backend to be alive, but it's not")
+	}
+
+	// Verify that the backend status is updated in the registry
+	healthStatus, exists := hc.healthySet.Load(backend.URL)
+	if !exists || !healthStatus.(*domain.Backend).Alive {
+		t.Errorf("Expected backend to be healthy in registry, but it's not")
 	}
 }
 
@@ -62,9 +70,10 @@ func TestHealthChecker_BackendDownt(t *testing.T) {
 	// Overrride the backend URL to point to the test server
 	// with this we simulate backend getting offline
 	backend.URL = server.URL
+	registry := infrastructure.NewBackendRegistry()
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
 
 	go hc.Start()
 
@@ -99,9 +108,10 @@ func TestHealthChecker_HTTPClientError(t *testing.T) {
 	defer testServer.Close()
 
 	backend.URL = testServer.URL
+	registry := infrastructure.NewBackendRegistry()
 
 	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, httpClient, testLogger)
+	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
 
 	go hc.Start()
 	hc.serverChan <- backend

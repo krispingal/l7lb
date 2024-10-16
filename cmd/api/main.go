@@ -43,17 +43,11 @@ func main() {
 		sugar.Fatalf("Invalid time duration provided for healthchecker frequency: %v, %v", err1, err2)
 	}
 
-	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, pooledClient, logger)
+	registry := infrastructure.NewBackendRegistry()
+	hc := usecases.NewHealthChecker(hc_healthy_freq, hc_unhealthy_freq, registry, pooledClient, logger)
 
-	loadBalancers := loadbalancing.CreateLoadBalancers(config, logger)
+	loadBalancers := loadbalancing.CreateLoadBalancers(config, registry, hc, logger)
 
-	// Start health checks for backend group
-	for _, lb := range loadBalancers {
-		lb.SubscribeToHealthChecker(hc) // Subscribe each LB to the healthchecker's channel
-		for _, backend := range lb.Backends() {
-			hc.AddBackend(backend)
-		}
-	}
 	hc.Start()
 
 	router := httphandler.NewPathRouterExactPathWithLB(loadBalancers)

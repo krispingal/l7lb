@@ -26,7 +26,7 @@ var retryCount int
 
 func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 	// Create a mock backend that fails the first two times & succeeds the third time
-	retryCount = 0
+	retryCount := 0
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retryCount++
 		if retryCount < 3 {
@@ -35,15 +35,20 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 			w.WriteHeader(http.StatusOK) // Simulate a successful response
 		}
 	}))
-	testLogger := zaptest.NewLogger(t)
 	defer mockServer.Close()
+	testLogger := zaptest.NewLogger(t)
 	backend := &domain.Backend{
 		URL:   mockServer.URL,
 		Alive: true,
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
+	// Manually inject healthy backends
+	lb := &LoadBalancer{
+		strategy:        mockStrategy,
+		logger:          testLogger,
+		healthyBackends: []*domain.Backend{backend},
+	}
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()
@@ -56,13 +61,13 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 }
 
 func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
-	testLogger := zaptest.NewLogger(t)
-	retryCount = 0
+	retryCount := 0
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		retryCount++
 		w.WriteHeader(http.StatusServiceUnavailable) // Simulate a failing backend
 	}))
 	defer mockServer.Close()
+	testLogger := zaptest.NewLogger(t)
 
 	backend := &domain.Backend{
 		URL:   mockServer.URL,
@@ -70,7 +75,11 @@ func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
+	lb := &LoadBalancer{
+		strategy:        mockStrategy,
+		logger:          testLogger,
+		healthyBackends: []*domain.Backend{backend},
+	}
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()
@@ -94,7 +103,11 @@ func TestLoadBalancerRouteRequestStrategyError(t *testing.T) {
 	}
 	testLogger := zaptest.NewLogger(t)
 	mockStrategy := &MockStrategy{err: errors.New("strategy error")}
-	lb := NewLoadBalancer([]*domain.Backend{backend}, mockStrategy, testLogger)
+	lb := &LoadBalancer{
+		strategy:        mockStrategy,
+		logger:          testLogger,
+		healthyBackends: []*domain.Backend{backend},
+	}
 
 	req := httptest.NewRequest("GET", "http://localhost/api", nil)
 	w := httptest.NewRecorder()
