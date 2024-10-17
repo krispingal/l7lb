@@ -57,18 +57,21 @@ func (hc *HealthChecker) worker(id int) {
 
 // Worker for checking servers' health status
 func (hc *HealthChecker) checkBackend(backend *domain.Backend) {
-	checkFrequency := hc.healthyFrequency
-	if !backend.Alive {
-		checkFrequency = hc.unhealthyFrequency
-	}
+	var healthy bool
 	// Pereform health check
 	resp, err := hc.httpClient.Get(backend.URL + backend.Health)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		hc.logger.Debug("Backend responded healthy", zap.String("backend_url", backend.URL))
-		hc.updateBackendStatus(backend, true) // Mark as healthy
+		healthy = true
+		hc.updateBackendStatus(backend, healthy) // Mark as healthy
 	} else {
 		hc.logger.Debug("Backend responded not healthy", zap.String("backend_url", backend.URL))
+		healthy = false
 		hc.updateBackendStatus(backend, false) // Mark as unhealthy
+	}
+	checkFrequency := hc.healthyFrequency
+	if !healthy {
+		checkFrequency = hc.unhealthyFrequency
 	}
 	time.Sleep(checkFrequency)
 	hc.serverChan <- backend
@@ -89,7 +92,7 @@ func (hc *HealthChecker) updateBackendStatus(backend *domain.Backend, isHealthy 
 		}
 	} else {
 		backend.Alive = false
-		if !exists {
+		if exists {
 			hc.healthySet.Delete(backend.URL)
 			statusUpdate := &domain.BackendStatus{URL: backend.URL, IsHealthy: isHealthy}
 			hc.registry.UpdateHealth(*statusUpdate) // Notify immediately on change

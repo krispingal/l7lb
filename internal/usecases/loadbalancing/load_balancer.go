@@ -17,9 +17,9 @@ type LoadBalancer struct {
 	backendRegistry      *infrastructure.BackendRegistry
 	strategy             LoadBalancingStrategy
 	logger               *zap.Logger
-	mu                   sync.RWMutex // mutex to protect healthy backend list
 	healthUpdateChannels []<-chan domain.BackendStatus
 	healthyBackends      []*domain.Backend
+	mu                   sync.RWMutex // mutex to protect healthy backend list
 }
 
 func NewLoadBalancer(registry *infrastructure.BackendRegistry, strategy LoadBalancingStrategy, healthChannels []<-chan domain.BackendStatus, logger *zap.Logger) *LoadBalancer {

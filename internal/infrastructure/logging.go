@@ -20,5 +20,5 @@ func InitLogger() {
 		// Fallback to standard logger in case zap initialization fails
 		os.Exit(1)
 	}
-	defer Logger.Sync() // Ensure that any buffered log entries are flushe
+	defer Logger.Sync() // Ensure that any buffered log entries are flushed
 }

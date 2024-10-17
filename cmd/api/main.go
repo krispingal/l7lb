@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	// _ "net/http/pprof"
+	_ "net/http/pprof"
 
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
@@ -20,9 +20,10 @@ func main() {
 	logger := infrastructure.Logger
 	sugar := infrastructure.Logger.Sugar()
 
-	// go func() {
-	// 	sugar.Info(http.ListenAndServe("localhost:6060", nil))
-	// }()
+	go func() {
+		sugar.Info(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	config, err := infrastructure.LoadConfig("config")
 	if err != nil {
 		sugar.Fatalf("Error loading config: %v", err)

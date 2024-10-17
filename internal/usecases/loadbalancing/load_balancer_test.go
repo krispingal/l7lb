@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -116,5 +118,42 @@ func TestLoadBalancerRouteRequestStrategyError(t *testing.T) {
 
 	if w.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, w.Result().StatusCode)
+	}
+}
+
+func BenchmarkRouteRequest(b *testing.B) {
+	// Register mock backends
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // Simulate a successful response
+	}))
+	defer mockServer.Close()
+
+	testLogger := zap.NewNop()
+	backend := &domain.Backend{
+		URL:   mockServer.URL,
+		Alive: true,
+	}
+	mockStrategy := &MockStrategy{backend: backend}
+
+	// Set up the LoadBalancer with a healthy backend
+	lb := &LoadBalancer{
+		strategy:        mockStrategy,
+		logger:          testLogger,
+		healthyBackends: []*domain.Backend{backend},
+	}
+	// Mock an HTTP request
+	// Create a dummy request
+	req := httptest.NewRequest("GET", "http://localhost/api", nil)
+
+	for i := 0; i < b.N; i++ {
+		// Benchmark the RouteRequest method
+		recorder := httptest.NewRecorder()
+		start := time.Now()
+
+		lb.RouteRequest(recorder, req)
+
+		// Measure elapsed time
+		duration := time.Since(start)
+		b.Logf("Request completed in %v with status %d", duration, recorder.Result().StatusCode)
 	}
 }
