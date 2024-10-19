@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
-	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap"
 )
 
@@ -14,14 +13,14 @@ type HealthChecker struct {
 	serverChan         chan *domain.Backend
 	healthyFrequency   time.Duration
 	unhealthyFrequency time.Duration
-	registry           *infrastructure.BackendRegistry
+	registry           domain.BackendRegistry
 	healthySet         sync.Map   // Map for lookups
 	mu                 sync.Mutex // To protect healthySet during notifications
 	httpClient         *http.Client
 	logger             *zap.Logger
 }
 
-func NewHealthChecker(healthyFreq time.Duration, unhealthyFreq time.Duration, registry *infrastructure.BackendRegistry, httpClient *http.Client, logger *zap.Logger) *HealthChecker {
+func NewHealthChecker(healthyFreq time.Duration, unhealthyFreq time.Duration, registry domain.BackendRegistry, httpClient *http.Client, logger *zap.Logger) *HealthChecker {
 	return &HealthChecker{
 		serverChan:         make(chan *domain.Backend, 1000),
 		healthyFrequency:   healthyFreq,
@@ -44,7 +43,6 @@ func (hc *HealthChecker) Start() {
 func (hc *HealthChecker) AddBackend(backend *domain.Backend) {
 	// Assume new servers are initially added to the unhealthy queue
 	hc.logger.Debug("Added backend", zap.String("backend_url", backend.URL))
-	backend.Alive = false
 	hc.serverChan <- backend
 }
 
@@ -83,7 +81,6 @@ func (hc *HealthChecker) updateBackendStatus(backend *domain.Backend, isHealthy 
 	defer hc.mu.Unlock()
 	_, exists := hc.healthySet.Load(backend.URL)
 	if isHealthy {
-		backend.Alive = true
 		if !exists {
 			hc.healthySet.Store(backend.URL, backend)
 			statusUpdate := &domain.BackendStatus{URL: backend.URL, IsHealthy: isHealthy}
@@ -91,7 +88,6 @@ func (hc *HealthChecker) updateBackendStatus(backend *domain.Backend, isHealthy 
 			hc.logger.Info("Backend moved to healthy", zap.String("backend_url", backend.URL))
 		}
 	} else {
-		backend.Alive = false
 		if exists {
 			hc.healthySet.Delete(backend.URL)
 			statusUpdate := &domain.BackendStatus{URL: backend.URL, IsHealthy: isHealthy}

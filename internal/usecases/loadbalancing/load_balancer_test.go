@@ -40,8 +40,7 @@ func TestLoadBalancerRouteRequestWithRetries(t *testing.T) {
 	defer mockServer.Close()
 	testLogger := zaptest.NewLogger(t)
 	backend := &domain.Backend{
-		URL:   mockServer.URL,
-		Alive: true,
+		URL: mockServer.URL,
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
@@ -72,8 +71,7 @@ func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
 	testLogger := zaptest.NewLogger(t)
 
 	backend := &domain.Backend{
-		URL:   mockServer.URL,
-		Alive: true,
+		URL: mockServer.URL,
 	}
 
 	mockStrategy := &MockStrategy{backend: backend}
@@ -100,8 +98,7 @@ func TestLoadBalancerRouteRequestUnavailableBackendWithRetries(t *testing.T) {
 
 func TestLoadBalancerRouteRequestStrategyError(t *testing.T) {
 	backend := &domain.Backend{
-		URL:   "http://mock-backend",
-		Alive: true,
+		URL: "http://mock-backend",
 	}
 	testLogger := zaptest.NewLogger(t)
 	mockStrategy := &MockStrategy{err: errors.New("strategy error")}
@@ -130,8 +127,7 @@ func BenchmarkRouteRequest(b *testing.B) {
 
 	testLogger := zap.NewNop()
 	backend := &domain.Backend{
-		URL:   mockServer.URL,
-		Alive: true,
+		URL: mockServer.URL,
 	}
 	mockStrategy := &MockStrategy{backend: backend}
 

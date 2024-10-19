@@ -7,7 +7,6 @@ import (
 )
 
 type LoadBalancerBuilder struct {
-	backends       []*domain.Backend
 	registry       *infrastructure.BackendRegistry
 	updateChannels []<-chan domain.BackendStatus
 	strategy       LoadBalancingStrategy

@@ -8,119 +8,177 @@ import (
 	"time"
 
 	"github.com/krispingal/l7lb/internal/domain"
-	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap/zaptest"
 )
 
-func TestHealthChecker_BackendAlive(t *testing.T) {
-	// Create a test backend which is down initially
-	backend := &domain.Backend{
+type MockBackendRegistry struct {
+	// updateHealthInvoked tracks whether UpdateHealth was called.
+	updateHealthInvoked bool
+	updatedStatus       domain.BackendStatus
+}
+
+func (m *MockBackendRegistry) UpdateHealth(status domain.BackendStatus) error {
+	m.updateHealthInvoked = true
+	m.updatedStatus = status // Capture the status passed to UpdateHealth
+	return nil
+}
+
+func (m *MockBackendRegistry) Subscribe(backendUrl string) <-chan domain.BackendStatus {
+	return nil
+}
+
+func (m *MockBackendRegistry) GetBackendByURL(backendUrl string) (domain.Backend, bool) {
+	return domain.Backend{}, false
+}
+
+func (m *MockBackendRegistry) AddBackendToRegistry(backend domain.Backend) {}
+
+func setupTest(t *testing.T, healthyBackend bool, markAsHealthy bool) (*MockBackendRegistry, *HealthChecker, *httptest.Server, *domain.Backend) {
+	testBackend := &domain.Backend{
 		URL:    "http://test-backend",
 		Health: "/health",
-		Alive:  false,
 	}
 	testLogger := zaptest.NewLogger(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	// Overrride the backend URL to point to the test server
-	// with this we simulate backend getting back online
-	backend.URL = server.URL
-	registry := infrastructure.NewBackendRegistry()
-
-	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
-
-	go hc.Start()
-	hc.AddBackend(backend)
-
-	// Wait for health check to run
-	time.Sleep(2 * time.Second)
-
-	// Verify that backend's Alive status is updated to true
-	if !backend.Alive {
-		t.Errorf("Expected backend to be alive, but it's not")
+	// Set up an HTTP test server.
+	var server *httptest.Server
+	if healthyBackend {
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+	} else {
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
 	}
 
-	// Verify that the backend status is updated in the registry
-	healthStatus, exists := hc.healthySet.Load(backend.URL)
-	if !exists || !healthStatus.(*domain.Backend).Alive {
-		t.Errorf("Expected backend to be healthy in registry, but it's not")
+	// Point the test backend URL to the test server.
+	testBackend.URL = server.URL
+
+	// Create a mock registry.
+	mockRegistry := &MockBackendRegistry{}
+
+	// Create an HTTP client.
+	httpClient := &http.Client{}
+
+	// Create a health checker with a 100ms interval and 1s timeout.
+	hc := NewHealthChecker(100*time.Millisecond, 1*time.Second, mockRegistry, httpClient, testLogger)
+
+	if markAsHealthy {
+		hc.healthySet.Store(server.URL, testBackend)
+	}
+
+	return mockRegistry, hc, server, testBackend
+}
+
+func TestHealthChecker_BackendBecomesAlive(t *testing.T) {
+	mockRegistry, hc, server, testBackend := setupTest(t, true, false)
+	defer server.Close()
+
+	go hc.Start()
+	hc.AddBackend(testBackend)
+
+	// Wait for 2 health check cycles to ensure the health check has run
+	time.Sleep(250 * time.Millisecond)
+
+	// Verify that UpdateHealth was called
+	if !mockRegistry.updateHealthInvoked {
+		t.Errorf("Expected UpdateHealth to be called, but it wasn't")
+	}
+
+	// Verify that the correct backend status was passed to UpdateHealth
+	expectedStatus := domain.BackendStatus{URL: testBackend.URL, IsHealthy: true}
+	if mockRegistry.updatedStatus != expectedStatus {
+		t.Errorf("Expected UpdateHealth to be called with %+v, but got %+v", expectedStatus, mockRegistry.updatedStatus)
 	}
 }
 
-func TestHealthChecker_BackendDownt(t *testing.T) {
-	// Create a test backend which is alive initially
-	backend := &domain.Backend{
-		URL:    "http://test-backend",
-		Health: "/health",
-		Alive:  true,
-	}
-	testLogger := zaptest.NewLogger(t)
-
-	// Setup an HTTP test server that simulates a failed backend
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
+func TestHealthChecker_BackendAliveInitially(t *testing.T) {
+	mockRegistry, hc, server, testBackend := setupTest(t, true, true)
 	defer server.Close()
-
-	// Overrride the backend URL to point to the test server
-	// with this we simulate backend getting offline
-	backend.URL = server.URL
-	registry := infrastructure.NewBackendRegistry()
-
-	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
-
+	// Start the health checker.
 	go hc.Start()
 
-	// Add the backend to the servers queue (initially considered healthy)
-	hc.serverChan <- backend
+	// Add the test backend.
+	hc.AddBackend(testBackend)
 
-	// Wait for health check to run
-	time.Sleep(2 * time.Second)
+	// Wait for 2 health check cycles.
+	time.Sleep(250 * time.Millisecond)
 
-	if backend.Alive {
-		t.Errorf("Expected backend to be down, but it's alive")
+	// Verify UpdateHealth was not called.
+	if mockRegistry.updateHealthInvoked {
+		t.Errorf("Expected UpdateHealth to not be called, but it was")
 	}
 }
 
-func TestHealthChecker_HTTPClientError(t *testing.T) {
-	// Create a test backend which is alive initially
-	backend := &domain.Backend{
-		URL:    "http://test-backend",
-		Health: "/health",
-		Alive:  true,
-	}
-	testLogger := zaptest.NewLogger(t)
-
-	// Overrride the backend URL to point to non-existent URL
-	// to simulate an error in the healthcheck
-	backend.URL = "http://127.0.0.1:9999"
-
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}))
-
-	defer testServer.Close()
-
-	backend.URL = testServer.URL
-	registry := infrastructure.NewBackendRegistry()
-
-	httpClient := &http.Client{}
-	hc := NewHealthChecker(1*time.Second, 1*time.Second, registry, httpClient, testLogger)
+func TestHealthChecker_BackendDownInitially(t *testing.T) {
+	mockRegistry, hc, server, testBackend := setupTest(t, false, false)
+	defer server.Close()
 
 	go hc.Start()
-	hc.serverChan <- backend
+	hc.serverChan <- testBackend
 
-	// Wait for health check to run
-	time.Sleep(2 * time.Second)
+	// Wait for 2 health check cycles to ensure the health check has run
+	time.Sleep(250 * time.Millisecond)
 
-	// Verify that backend's Alive status is updated to false due to the client error
-	if backend.Alive {
-		t.Errorf("Expected backend to be down, but it's alive")
+	// Verify that UpdateHealth was not called
+	if mockRegistry.updateHealthInvoked {
+		t.Errorf("Expected UpdateHealth to not be called, but it was")
+	}
+}
+
+func TestHealthChecker_BackendBecomesUnhealthy(t *testing.T) {
+	mockRegistry, hc, server, testBackend := setupTest(t, false, true)
+	defer server.Close()
+
+	go hc.Start()
+	hc.serverChan <- testBackend
+
+	// Wait for 2 health check cycles.
+	time.Sleep(250 * time.Millisecond)
+
+	// Verify UpdateHealth was called.
+	if !mockRegistry.updateHealthInvoked {
+		t.Errorf("Expected UpdateHealth to be called, but it was not")
+	}
+
+	// Verify the correct backend status was passed to UpdateHealth.
+	expectedStatus := domain.BackendStatus{URL: testBackend.URL, IsHealthy: false}
+	if mockRegistry.updatedStatus != expectedStatus {
+		t.Errorf("Expected UpdateHealth to be called with %+v, but got %+v", expectedStatus, mockRegistry.updatedStatus)
+	}
+}
+
+func TestHealthChecker_AddBackend(t *testing.T) {
+	// Create a health checker
+	mockRegistry := &MockBackendRegistry{}
+	httpClient := &http.Client{}
+	testLogger := zaptest.NewLogger(t)
+	testChan := make(chan *domain.Backend)
+
+	hc := NewHealthChecker(100*time.Millisecond, 1*time.Second, mockRegistry, httpClient, testLogger)
+	hc.serverChan = testChan
+
+	// Create a test backend
+	testBackend := &domain.Backend{
+		URL: "http://test-backend",
+	}
+
+	done := make(chan struct{})
+	go func() {
+		backend := <-testChan
+		if backend.URL != testBackend.URL {
+			t.Errorf("Expected backend URL to be %s, but got %s", testBackend.URL, backend.URL)
+		}
+		close(done)
+	}()
+	// Add the test backend
+	hc.AddBackend(testBackend)
+
+	select {
+	case <-done:
+		// Test completed successfully
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("Timeout waiting for backend on server channel")
 	}
 }

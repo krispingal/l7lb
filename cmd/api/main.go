@@ -8,6 +8,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/krispingal/l7lb/internal/domain"
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"github.com/krispingal/l7lb/internal/interfaces/httphandler"
 	"github.com/krispingal/l7lb/internal/usecases"
@@ -52,7 +53,7 @@ func main() {
 	hc.Start()
 
 	router := httphandler.NewPathRouterExactPathWithLB(loadBalancers)
-	var rateLimiter ratelimiting.RateLimiterInterface
+	var rateLimiter domain.RateLimiter
 	switch config.RateLimiter.Type {
 	case "none":
 		rateLimiter = ratelimiting.NoOpRateLimiter{}

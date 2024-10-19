@@ -4,7 +4,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/krispingal/l7lb/internal/usecases/ratelimiting"
+	"github.com/krispingal/l7lb/internal/domain"
 	"go.uber.org/zap"
 )
 
@@ -16,7 +16,7 @@ func getClientIP(r *http.Request) string {
 	return ip
 }
 
-func NewMiddleware(limiter ratelimiting.RateLimiterInterface, next http.Handler, logger *zap.Logger) http.Handler {
+func NewMiddleware(limiter domain.RateLimiter, next http.Handler, logger *zap.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP := getClientIP(r)
 		if clientIP == "" {
