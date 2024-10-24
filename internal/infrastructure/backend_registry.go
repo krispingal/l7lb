@@ -11,7 +11,7 @@ type healthUpdateChannel chan domain.BackendStatus
 
 type BackendRegistry struct {
 	mu          sync.RWMutex
-	backendUrl  map[string]domain.Backend        // backendUrl -> domain.Backend
+	backendId   map[uint64]domain.Backend        //backendId -> domain.Backend
 	backends    map[string]domain.BackendStatus  // Store backend health status
 	subscribers map[string][]healthUpdateChannel // Map of backend -> list of load balancer channel
 }
@@ -19,7 +19,7 @@ type BackendRegistry struct {
 // Initialize the registry
 func NewBackendRegistry() *BackendRegistry {
 	return &BackendRegistry{
-		backendUrl:  make(map[string]domain.Backend),
+		backendId:   make(map[uint64]domain.Backend),
 		backends:    make(map[string]domain.BackendStatus),
 		subscribers: make(map[string][]healthUpdateChannel),
 	}
@@ -58,15 +58,16 @@ func (r *BackendRegistry) Subscribe(backendUrl string) <-chan domain.BackendStat
 	return ch
 }
 
-func (r *BackendRegistry) GetBackendByURL(backendUrl string) (domain.Backend, bool) {
+// Get the backend with id
+func (r *BackendRegistry) GetBackendById(backendId uint64) (domain.Backend, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	backend, exists := r.backendUrl[backendUrl]
+	backend, exists := r.backendId[backendId]
 	return backend, exists
 }
 
 func (r *BackendRegistry) AddBackendToRegistry(backend domain.Backend) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.backendUrl[backend.URL] = backend
+	r.backendId[backend.Id] = backend
 }

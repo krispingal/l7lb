@@ -64,35 +64,35 @@ func (lb *LoadBalancer) listenToHealthUpdates() {
 
 func (lb *LoadBalancer) updateProcessDispatcher(update domain.BackendStatus) {
 	if update.IsHealthy {
-		lb.addToHealthyBackends(update.URL)
+		lb.addToHealthyBackends(update.Id)
 	} else {
-		lb.removeFromHealthyBackends(update.URL)
+		lb.removeFromHealthyBackends(update.Id)
 	}
 }
 
-func (lb *LoadBalancer) addToHealthyBackends(backendURL string) {
+func (lb *LoadBalancer) addToHealthyBackends(backendId uint64) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
 	for _, backend := range lb.healthyBackends {
-		if backend.URL == backendURL {
+		if backend.Id == backendId {
 			return
 		}
 	}
-	backend, ok := lb.backendRegistry.GetBackendByURL(backendURL)
+	backend, ok := lb.backendRegistry.GetBackendById(backendId)
 	if !ok {
-		lb.logger.Error("No backend forund for url", zap.String("backend_url", backendURL))
+		lb.logger.Error("No backend forund for url", zap.Uint64("backend_id", backendId))
 		return
 	}
 	lb.healthyBackends = append(lb.healthyBackends, &backend)
 }
 
-func (lb *LoadBalancer) removeFromHealthyBackends(backendURL string) {
+func (lb *LoadBalancer) removeFromHealthyBackends(backendId uint64) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
 	for i, backend := range lb.healthyBackends {
-		if backend.URL == backendURL {
+		if backend.Id == backendId {
 			lb.healthyBackends = append(lb.healthyBackends[:i], lb.healthyBackends[i+1:]...)
 			return
 		}

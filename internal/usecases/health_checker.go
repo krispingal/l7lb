@@ -83,14 +83,14 @@ func (hc *HealthChecker) updateBackendStatus(backend *domain.Backend, isHealthy 
 	if isHealthy {
 		if !exists {
 			hc.healthySet.Store(backend.URL, backend)
-			statusUpdate := &domain.BackendStatus{URL: backend.URL, IsHealthy: isHealthy}
+			statusUpdate := &domain.BackendStatus{Id: backend.Id, URL: backend.URL, IsHealthy: isHealthy}
 			hc.registry.UpdateHealth(*statusUpdate) // Notify immediately on change
 			hc.logger.Info("Backend moved to healthy", zap.String("backend_url", backend.URL))
 		}
 	} else {
 		if exists {
 			hc.healthySet.Delete(backend.URL)
-			statusUpdate := &domain.BackendStatus{URL: backend.URL, IsHealthy: isHealthy}
+			statusUpdate := &domain.BackendStatus{Id: backend.Id, URL: backend.URL, IsHealthy: isHealthy}
 			hc.registry.UpdateHealth(*statusUpdate) // Notify immediately on change
 			hc.logger.Info("Backend moved to unhealthy", zap.String("backend_url", backend.URL))
 		}

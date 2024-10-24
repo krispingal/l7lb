@@ -27,7 +27,7 @@ func (m *MockBackendRegistry) Subscribe(backendUrl string) <-chan domain.Backend
 	return nil
 }
 
-func (m *MockBackendRegistry) GetBackendByURL(backendUrl string) (domain.Backend, bool) {
+func (m *MockBackendRegistry) GetBackendById(backendId uint64) (domain.Backend, bool) {
 	return domain.Backend{}, false
 }
 
