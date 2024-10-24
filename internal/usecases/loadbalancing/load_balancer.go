@@ -54,7 +54,7 @@ func (lb *LoadBalancer) listenToHealthUpdates() {
 		chosen, value, ok := reflect.Select(cases)
 		if ok {
 			update := value.Interface().(domain.BackendStatus)
-			lb.logger.Debug("Received backend health update", zap.String("backend_url", update.URL))
+			lb.logger.Debug("Received backend health update", zap.Uint64("backend_id", update.Id))
 			lb.updateProcessDispatcher(update)
 		} else {
 			lb.logger.Warn("BackendHealthUpdateChannel was closed", zap.Int("update_channel", chosen))

@@ -23,7 +23,7 @@ func (m *MockBackendRegistry) UpdateHealth(status domain.BackendStatus) error {
 	return nil
 }
 
-func (m *MockBackendRegistry) Subscribe(backendUrl string) <-chan domain.BackendStatus {
+func (m *MockBackendRegistry) Subscribe(backendId uint64) <-chan domain.BackendStatus {
 	return nil
 }
 
@@ -35,6 +35,7 @@ func (m *MockBackendRegistry) AddBackendToRegistry(backend domain.Backend) {}
 
 func setupTest(t *testing.T, healthyBackend bool, markAsHealthy bool) (*MockBackendRegistry, *HealthChecker, *httptest.Server, *domain.Backend) {
 	testBackend := &domain.Backend{
+		Id:     11,
 		URL:    "http://test-backend",
 		Health: "/health",
 	}
@@ -87,7 +88,7 @@ func TestHealthChecker_BackendBecomesAlive(t *testing.T) {
 	}
 
 	// Verify that the correct backend status was passed to UpdateHealth
-	expectedStatus := domain.BackendStatus{URL: testBackend.URL, IsHealthy: true}
+	expectedStatus := domain.BackendStatus{Id: 11, IsHealthy: true}
 	if mockRegistry.updatedStatus != expectedStatus {
 		t.Errorf("Expected UpdateHealth to be called with %+v, but got %+v", expectedStatus, mockRegistry.updatedStatus)
 	}
@@ -143,7 +144,7 @@ func TestHealthChecker_BackendBecomesUnhealthy(t *testing.T) {
 	}
 
 	// Verify the correct backend status was passed to UpdateHealth.
-	expectedStatus := domain.BackendStatus{URL: testBackend.URL, IsHealthy: false}
+	expectedStatus := domain.BackendStatus{Id: 11, IsHealthy: false}
 	if mockRegistry.updatedStatus != expectedStatus {
 		t.Errorf("Expected UpdateHealth to be called with %+v, but got %+v", expectedStatus, mockRegistry.updatedStatus)
 	}

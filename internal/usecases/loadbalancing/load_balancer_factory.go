@@ -27,18 +27,18 @@ func CreateLoadBalancers(config *infrastructure.Config, registry *infrastructure
 func setupHealthAndRegister(backends []infrastructure.Backend, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker) []<-chan domain.BackendStatus {
 	var healthUpdateChannels []<-chan domain.BackendStatus
 	for _, backendConfig := range backends {
-		// Subscribe for health updates
-		channel := registry.Subscribe(backendConfig.URL)
-		healthUpdateChannels = append(healthUpdateChannels, channel)
-
 		// Register the backend with health checker and registry
-		registerBackend(backendConfig, registry, healthChecker)
+		backend := registerBackend(backendConfig, registry, healthChecker)
+		// Subscribe for health updates
+		channel := registry.Subscribe(backend.Id)
+		healthUpdateChannels = append(healthUpdateChannels, channel)
 	}
 	return healthUpdateChannels
 }
 
-func registerBackend(backendConfig infrastructure.Backend, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker) {
+func registerBackend(backendConfig infrastructure.Backend, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker) *domain.Backend {
 	backend := domain.NewBackend(backendConfig.URL, backendConfig.Health)
 	healthChecker.AddBackend(backend)
 	registry.AddBackendToRegistry(*backend)
+	return backend
 }

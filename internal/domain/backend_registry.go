@@ -2,7 +2,7 @@ package domain
 
 type BackendRegistry interface {
 	UpdateHealth(status BackendStatus) error
-	Subscribe(backendUrl string) <-chan BackendStatus
+	Subscribe(backendId uint64) <-chan BackendStatus
 	GetBackendById(backendId uint64) (Backend, bool)
 	AddBackendToRegistry(backend Backend)
 }
