@@ -1,6 +1,6 @@
 package domain
 
 type BackendStatus struct {
-	URL       string
+	Id        uint64
 	IsHealthy bool
 }

@@ -7,30 +7,38 @@ import (
 	"go.uber.org/zap"
 )
 
-func CreateLoadBalancers(config *infrastructure.Config, registry *infrastructure.BackendRegistry, healthchecker *usecases.HealthChecker, logger *zap.Logger) map[string]*LoadBalancer {
+func CreateLoadBalancers(config *infrastructure.Config, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker, logger *zap.Logger) map[string]*LoadBalancer {
 	lbMap := make(map[string]*LoadBalancer)
 
 	for _, route := range config.Routes {
-		builder := NewLoadBalancerBuilder()
-		var healthUpdateChannels []<-chan domain.BackendStatus
-		for _, backend := range route.Backends {
-			channel := registry.Subscribe(backend.URL)
-			healthUpdateChannels = append(healthUpdateChannels, channel)
-		}
-		builder.WithHealthUpdateChannels(healthUpdateChannels)
-		builder.WithBackendRegistry(registry)
-
-		strategy := NewRoundRobinStrategy()
-		builder.WithStrategy(strategy)
-		builder.WithLogger(logger)
+		healthUpdateChannels := setupHealthAndRegister(route.Backends, registry, healthChecker)
+		builder := NewLoadBalancerBuilder().
+			WithBackendRegistry(registry).
+			WithStrategy(NewRoundRobinStrategy()).
+			WithHealthUpdateChannels(healthUpdateChannels).
+			WithLogger(logger)
 
 		lbMap[route.Path] = builder.Build()
-		for _, configBackend := range route.Backends {
-			backend := domain.NewBackend(configBackend.URL, configBackend.Health)
-			healthchecker.AddBackend(backend)
-			registry.AddBackendToRegistry(*backend)
-		}
 	}
 	logger.Debug("Created load balancers")
 	return lbMap
+}
+
+func setupHealthAndRegister(backends []infrastructure.Backend, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker) []<-chan domain.BackendStatus {
+	var healthUpdateChannels []<-chan domain.BackendStatus
+	for _, backendConfig := range backends {
+		// Register the backend with health checker and registry
+		backend := registerBackend(backendConfig, registry, healthChecker)
+		// Subscribe for health updates
+		channel := registry.Subscribe(backend.Id)
+		healthUpdateChannels = append(healthUpdateChannels, channel)
+	}
+	return healthUpdateChannels
+}
+
+func registerBackend(backendConfig infrastructure.Backend, registry *infrastructure.BackendRegistry, healthChecker *usecases.HealthChecker) *domain.Backend {
+	backend := domain.NewBackend(backendConfig.URL, backendConfig.Health)
+	healthChecker.AddBackend(backend)
+	registry.AddBackendToRegistry(*backend)
+	return backend
 }

@@ -11,17 +11,17 @@ type healthUpdateChannel chan domain.BackendStatus
 
 type BackendRegistry struct {
 	mu          sync.RWMutex
-	backendUrl  map[string]domain.Backend        // backendUrl -> domain.Backend
-	backends    map[string]domain.BackendStatus  // Store backend health status
-	subscribers map[string][]healthUpdateChannel // Map of backend -> list of load balancer channel
+	backendId   map[uint64]domain.Backend        //backendId -> domain.Backend
+	backends    map[uint64]domain.BackendStatus  // Store backend health status
+	subscribers map[uint64][]healthUpdateChannel // Map of backend -> list of load balancer channel
 }
 
 // Initialize the registry
 func NewBackendRegistry() *BackendRegistry {
 	return &BackendRegistry{
-		backendUrl:  make(map[string]domain.Backend),
-		backends:    make(map[string]domain.BackendStatus),
-		subscribers: make(map[string][]healthUpdateChannel),
+		backendId:   make(map[uint64]domain.Backend),
+		backends:    make(map[uint64]domain.BackendStatus),
+		subscribers: make(map[uint64][]healthUpdateChannel),
 	}
 }
 
@@ -33,10 +33,10 @@ func (r *BackendRegistry) UpdateHealth(status domain.BackendStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.backends[status.URL] = status
+	r.backends[status.Id] = status
 
 	// Notify all lbs of this backend health update
-	if subs, ok := r.subscribers[status.URL]; ok {
+	if subs, ok := r.subscribers[status.Id]; ok {
 		for _, ch := range subs {
 			ch <- status // Non-blocking send
 		}
@@ -45,7 +45,7 @@ func (r *BackendRegistry) UpdateHealth(status domain.BackendStatus) error {
 }
 
 // Method for load balancers to subscribe to specific backend health updates
-func (r *BackendRegistry) Subscribe(backendUrl string) <-chan domain.BackendStatus {
+func (r *BackendRegistry) Subscribe(backendId uint64) <-chan domain.BackendStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -53,20 +53,21 @@ func (r *BackendRegistry) Subscribe(backendUrl string) <-chan domain.BackendStat
 	ch := make(chan domain.BackendStatus, 10)
 
 	// Add the channel to the list of subscribers for the backend
-	r.subscribers[backendUrl] = append(r.subscribers[backendUrl], ch)
+	r.subscribers[backendId] = append(r.subscribers[backendId], ch)
 
 	return ch
 }
 
-func (r *BackendRegistry) GetBackendByURL(backendUrl string) (domain.Backend, bool) {
+// Get the backend with id
+func (r *BackendRegistry) GetBackendById(backendId uint64) (domain.Backend, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	backend, exists := r.backendUrl[backendUrl]
+	backend, exists := r.backendId[backendId]
 	return backend, exists
 }
 
 func (r *BackendRegistry) AddBackendToRegistry(backend domain.Backend) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.backendUrl[backend.URL] = backend
+	r.backendId[backend.Id] = backend
 }
