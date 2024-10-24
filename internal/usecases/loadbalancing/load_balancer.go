@@ -1,7 +1,9 @@
 package loadbalancing
 
 import (
+	"crypto/tls"
 	"io"
+	"net"
 	"net/http"
 	"reflect"
 	"sync"
@@ -11,6 +13,7 @@ import (
 	"github.com/krispingal/l7lb/internal/domain"
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap"
+	"golang.org/x/net/http2"
 )
 
 type LoadBalancer struct {
@@ -105,16 +108,16 @@ func (lb *LoadBalancer) getHealthyBackends() []*domain.Backend {
 	return lb.healthyBackends
 }
 
-var client = &http.Client{
-	Transport: &http.Transport{
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		DisableKeepAlives:     false,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 3 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+var h2Transport = &http2.Transport{
+	AllowHTTP: true, // Enable HTTP/2 over clear text (H2C)
+	DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+		return net.Dial(network, addr) // Use plain TCP instead of TLS
 	},
-	Timeout: 10 * time.Second, // Set a timeout for the overall backend requests
+}
+
+var client = &http.Client{
+	Transport: h2Transport,
+	Timeout:   10 * time.Second, // Set a timeout for the overall backend requests
 }
 
 var bufferPool = sync.Pool{

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -23,12 +26,16 @@ func main() {
 	port := flag.String("port", "8080", "Port to run backend server on")
 	flag.Parse()
 
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/", apiHandler)
+	h2Server := &http2.Server{}
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/", apiHandler)
+
+	handler := h2c.NewHandler(mux, h2Server)
 
 	fmt.Printf("Backend server listening on :%s\n", *port)
-	err := http.ListenAndServe(":"+*port, nil)
-	if err != nil {
+	if err := http.ListenAndServe(":"+*port, handler); err != nil {
 		fmt.Printf("Error starting server on port %s: %v\n", *port, err)
 	}
 
