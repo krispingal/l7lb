@@ -1,11 +1,14 @@
 package loadbalancing
 
 import (
+	"bytes"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 
 	"time"
@@ -13,6 +16,7 @@ import (
 	"github.com/krispingal/l7lb/internal/domain"
 	"github.com/krispingal/l7lb/internal/infrastructure"
 	"go.uber.org/zap"
+	"golang.org/x/exp/rand"
 	"golang.org/x/net/http2"
 )
 
@@ -84,7 +88,7 @@ func (lb *LoadBalancer) addToHealthyBackends(backendId uint64) {
 	}
 	backend, ok := lb.backendRegistry.GetBackendById(backendId)
 	if !ok {
-		lb.logger.Error("No backend forund for url", zap.Uint64("backend_id", backendId))
+		lb.logger.Error("No backend found for url", zap.Uint64("backend_id", backendId))
 		return
 	}
 	lb.healthyBackends = append(lb.healthyBackends, &backend)
@@ -122,61 +126,103 @@ var client = &http.Client{
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 64<<10) // 64KB buffer
+		return make([]byte, 32<<10) // 32KB buffer
 	},
 }
 
+var (
+	ErrNoHealthyBackends    = errors.New("no healthy backends available")
+	ErrServiceUnavailable   = errors.New("service unavailable")
+	ErrBackendRequestFailed = errors.New("backend request error")
+)
+
+// Orchestrator for routing request
 func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	backends := lb.getHealthyBackends()
 	if len(backends) == 0 {
-		lb.logger.Error("No healthy backends available", zap.Any("request_url", r.URL))
+		http.Error(w, ErrNoHealthyBackends.Error(), http.StatusServiceUnavailable)
+		lb.logger.Error(ErrServiceUnavailable.Error(), zap.Any("request_url", r.URL))
+		return
 	}
 	backend, err := lb.strategy.GetNextBackend(backends)
 
 	if err != nil {
-		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		http.Error(w, ErrServiceUnavailable.Error(), http.StatusServiceUnavailable)
 		lb.logger.Error("Load balancer did not receive a next backend")
 		return
 	}
-
-	targetURL := backend.URL + r.URL.Path + "?" + r.URL.RawQuery
-
-	// Create a new request
-	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	// Use strings.Builder to build the target URL efficiently
+	var targetURL strings.Builder
+	targetURL.WriteString(backend.URL)
+	targetURL.WriteString(r.URL.Path)
+	if r.URL.RawQuery != "" {
+		targetURL.WriteString("?")
+		targetURL.WriteString(r.URL.RawQuery)
+	}
+	resp, err := lb.sendRequestWithRetries(r, targetURL.String())
 	if err != nil {
-		http.Error(w, "Backend request error", http.StatusInternalServerError)
-		lb.logger.Error("Backend unavailable", zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
+		http.Error(w, ErrBackendRequestFailed.Error(), http.StatusInternalServerError)
+		lb.logger.Error(ErrBackendRequestFailed.Error(), zap.String("url", backend.URL), zap.Int("status", http.StatusServiceUnavailable), zap.Duration("duration", time.Since(startTime)))
 		return
 	}
-	defer req.Body.Close()
 
-	req.Header = r.Header // Pass the original header
-	maxRetries := 3
+	defer resp.Body.Close()
+
+	lb.writeResponse(w, resp)
+	lb.logger.Debug("Request routed successfully", zap.String("backend_url", backend.URL), zap.Int("status", resp.StatusCode), zap.Duration("duration", time.Since(startTime)))
+}
+
+func (lb *LoadBalancer) sendRequestWithRetries(originalReq *http.Request, targetURL string) (*http.Response, error) {
+	// Create a new request
+	originalBody, err := io.ReadAll(originalReq.Body) // Read and clone the body
+	if err != nil {
+		return nil, err
+	}
+	originalReq.Body.Close() // close the original body
+
+	req, err := http.NewRequest(originalReq.Method, targetURL, io.NopCloser(bytes.NewReader(originalBody)))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header = originalReq.Header // Clone the header once
+	return lb.retryWithJitter(req, originalBody, 3)
+}
+
+func (lb *LoadBalancer) retryWithJitter(req *http.Request, originalBody []byte, maxRetries int) (*http.Response, error) {
 	var resp *http.Response
+	var err error
 	for i := 0; i < maxRetries; i++ {
+		// Clone the body for each retry
+		req.Body = io.NopCloser(bytes.NewReader(originalBody))
+
 		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break
+			return resp, nil
 		}
 		// It is a Client-side (4xx) - do not retry
 		if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429) {
 			break
 		}
 		if err != nil || resp.StatusCode >= 500 || resp.StatusCode == 429 {
-			lb.logger.Error("Error making request to backend", zap.String("backend_url", backend.URL), zap.Error(err))
-			time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
+			time.Sleep(time.Duration(i)*time.Second + time.Duration(rand.Intn(100))*time.Millisecond) // Add jitter to backoff
 		} else {
 			// For other errors - non transient, break the loop
 			break
 		}
 	}
-	defer func() {
-		if resp != nil {
-			resp.Body.Close()
-		}
-	}()
+	if err != nil { // checks only the last error
+		lb.logger.Error("Failed to make request to backend after retries",
+			zap.String("url", req.URL.String()), zap.Error(err))
+	} else if resp != nil {
+		lb.logger.Error("Non-retryable response from backend",
+			zap.String("url", req.URL.String()), zap.Int("status", resp.StatusCode))
+	}
+	return resp, err
+}
 
+func (lb *LoadBalancer) writeResponse(w http.ResponseWriter, resp *http.Response) {
 	for k, v := range resp.Header {
 		w.Header()[k] = v
 	}
@@ -184,5 +230,4 @@ func (lb *LoadBalancer) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	buf := bufferPool.Get().([]byte)
 	defer bufferPool.Put(buf)
 	io.CopyBuffer(w, resp.Body, buf)
-	lb.logger.Debug("Request routed successfully", zap.String("backend_url", backend.URL), zap.Int("status", resp.StatusCode), zap.Duration("duration", time.Since(startTime)))
 }
