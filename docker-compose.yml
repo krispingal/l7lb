@@ -1,0 +1,64 @@
+services:
+  load_balancer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: load_balancer
+    ports:
+      - "8443:8443" # Expose the load balancer's HTTPS port
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+    environment:
+      - BACKEND1_URL=http://backend1:8081
+      - BACKEND2_URL=http://backend2:8082
+      - BACKEND3_URL=http://backend3:8083
+    networks:
+      - loadbalancer_net
+
+  backend1:
+    image: golang:alpine
+    container_name: backend1
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: >
+      sh -c "BACKEND_RESPONSE='Hello from backend 1'
+      go run test_backends/backend_server.go --port 8081"
+    ports:
+      - "8081:8081"
+    networks:
+      - loadbalancer_net
+
+  backend2:
+    image: golang:alpine
+    container_name: backend2
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: >
+      sh -c "BACKEND_RESPONSE='Hello from backend 2'
+      go run test_backends/backend_server.go --port 8082"
+    ports:
+      - "8082:8082"
+    networks:
+      - loadbalancer_net
+
+  backend3:
+    image: golang:alpine
+    container_name: backend3
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: >
+      sh -c "BACKEND_RESPONSE='Hello from backend 3'
+      go run test_backends/backend_server.go --port 8083"
+    ports:
+      - "8083:8083"
+    networks:
+      - loadbalancer_net
+
+networks:
+  loadbalancer_net:
+    driver: bridge

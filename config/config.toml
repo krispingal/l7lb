@@ -2,25 +2,25 @@
 [[routes]]
 path = "/apiA"
 [[routes.backends]]
-url = "http://localhost:8081"
+url = "http://backend1:8081"
 health = "/health"
 
 [[routes.backends]]
-url = "http://localhost:8083"
+url = "http://backend3:8083"
 health = "/health"
 
 [[routes]]
 path = "/apiB"
 [[routes.backends]]
-url = "http://localhost:8082"
+url = "http://backend2:8082"
 health = "/health"
 
 [[routes.backends]]
-url = "http://localhost:8084"
+url = "http://backend4:8084"
 health = "/health"
 
 [[routes.backends]]
-url = "http://localhost:8085"
+url = "http://backend5:8085"
 health = "/health"
 
 [rateLimiter]

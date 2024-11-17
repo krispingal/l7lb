@@ -19,7 +19,8 @@ This is a custom Layer 7 (L7) load balancer implemented in Go (Golang) that supp
 
 ```sh
 go install
-go run cmd/api/main.go
+go build -o layer7proxy cmd/api/main.go
+./layer7proxy
 ```
 
 The load balancer will start on port 8443. You can modify the configuration in main.go to adjust backend groups and routes.
@@ -43,11 +44,26 @@ curl -k https://localhost:8443/apiA
 ```
 
 #### Test rate limiting
+Enable rate limiting by updating `config/config.toml`, rate limiting is turned off by default.
 
+```toml
+[rateLimiter]
+type = "fixed_window"  # can be "fixed_window", "token_bucket", "none"
+limit = 100
+window = "1m" # This will enable a fixed window rate limiter that allows 100 requests per 1 minute. 
+```
+Next, you can test this by running something like this.
 ```sh
 for i in {1..110}; do
   curl -k https://localhost:8443/apiA
 done
+```
+
+### Running on docker
+Run these commands on your terminal.
+```sh
+$ docker-compose build
+$ docker-compose up -d
 ```
 
 ## Future Enhancements
