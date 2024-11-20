@@ -14,14 +14,70 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # fetch full history for comparison
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.23.1"
+      
+      - name: Install benchmark tools
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          go install golang.org/x/perf/cmd/benchcmp@latest
 
-      - name: Build
-        run: go build -v cmd/api/main.go
+      - name: Build Project
+        run: go build -v ./...
 
-      - name: Test
+      - name: Run Tests
         run: go test -v ./...
+
+      - name: Prepare Benchmark Results Directory
+        run: mkdir -p benchmark-results
+
+      - name: Run Benchmarks on current commit
+        run: |
+          go test -bench=. -benchmem -count=10 ./... | tee benchmark-results/current_benchmarks.txt
+          benchstat benchmark-results/current_benchmarks.txt > benchmark-results/current_stats.txt
+      - name: Checkout main branch
+        run: |
+          git checkout main
+          go test -bench=. -benchmem -count=10 ./... | tee benchmark-results/main_benchmarks.txt
+          benchstat benchmark-results/main_benchmarks.txt > benchmark-results/main_stats.txt
+      
+      - name: Compare benchmarks
+        run: |
+          git checkout -
+          benchcmp benchmark-results/main_benchmarks.txt benchmark-results/current_benchmarks.txt > benchmark-results/benchmark_comparison.txt
+      
+      - name: Create Detailed benchmark report
+        run: |
+          echo "## Benchmark Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "### Current Commit Benchmark Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat benchmark-results/current_stats.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Benchmark Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat benchmark-results/benchmark_comparison.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-report
+          path: benchmark-results/
+          retention-days: 30
+
+      - name: Performance Trend Tracking
+        uses: dehus/github-action-benchmark@v1
+        with:
+          name: Go Benchmarks
+          tool: 'go'
+          output-file-path: benchmark-results/current_benchmarks.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          gh-pages-branch: 'performance-tracking'
