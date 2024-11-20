@@ -1,7 +1,4 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: build
+name: Performance Benchmarks
 
 on:
   push:
@@ -10,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  build:
+  benchmark:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +23,6 @@ jobs:
       - name: Install benchmark tools
         run: |
           go install golang.org/x/perf/cmd/benchstat@latest
-          go install golang.org/x/perf/cmd/benchcmp@latest
 
       - name: Build Project
         run: go build -v ./...
@@ -37,22 +33,23 @@ jobs:
       - name: Prepare Benchmark Results Directory
         run: mkdir -p benchmark-results
 
-      - name: Run Benchmarks on current commit
+      - name: Run Benchmarks on Current Commit
         run: |
           go test -bench=. -benchmem -count=10 ./... | tee benchmark-results/current_benchmarks.txt
           benchstat benchmark-results/current_benchmarks.txt > benchmark-results/current_stats.txt
-      - name: Checkout main branch
+
+      - name: Run Benchmarks on Main Branch
         run: |
           git checkout main
           go test -bench=. -benchmem -count=10 ./... | tee benchmark-results/main_benchmarks.txt
           benchstat benchmark-results/main_benchmarks.txt > benchmark-results/main_stats.txt
-      
-      - name: Compare benchmarks
+
+      - name: Compare Benchmark Statistics
         run: |
           git checkout -
-          benchcmp benchmark-results/main_benchmarks.txt benchmark-results/current_benchmarks.txt > benchmark-results/benchmark_comparison.txt
+          benchstat -sort=name benchmark-results/main_benchmarks.txt benchmark-results/current_benchmarks.txt > benchmark-results/benchmark_comparison.txt
       
-      - name: Create Detailed benchmark report
+      - name: Create Detailed Benchmark Report
         run: |
           echo "## Benchmark Analysis" >> $GITHUB_STEP_SUMMARY
           echo "### Current Commit Benchmark Statistics" >> $GITHUB_STEP_SUMMARY
