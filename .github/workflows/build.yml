@@ -73,11 +73,12 @@ jobs:
           retention-days: 30
 
       - name: Performance Trend Tracking
-        uses: dehus/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@v1
         with:
-          name: Go Benchmarks
+          name: L7LB Go Benchmarks
           tool: 'go'
           output-file-path: benchmark-results/current_benchmarks.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
           auto-push: true
           gh-pages-branch: 'performance-tracking'
