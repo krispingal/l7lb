@@ -47,7 +47,7 @@ jobs:
       - name: Compare Benchmark Statistics
         run: |
           git checkout -
-          benchstat -sort=name benchmark-results/main_benchmarks.txt benchmark-results/current_benchmarks.txt > benchmark-results/benchmark_comparison.txt
+          benchstat main=benchmark-results/main_benchmarks.txt current=benchmark-results/current_benchmarks.txt > benchmark-results/benchmark_comparison.txt
       
       - name: Create Detailed Benchmark Report
         run: |
